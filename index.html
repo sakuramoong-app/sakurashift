@@ -508,7 +508,7 @@ const TIME_OPTIONS=[];
 for(let h=12;h<=28;h++) TIME_OPTIONS.push({value:h,label:h>=24?String(h-24)+'(翌)':String(h)});
 const END_OPTIONS=[];
 for(let h=13;h<=29;h++) END_OPTIONS.push({value:h,label:h>=24?String(h-24)+'(翌)':String(h)});
-function fmt(v){if(v==null)return'';const h=Math.round(v);return h>=24?String(h-24):String(h);}
+function fmt(v){if(v==null)return'';if(v===11.5)return'11:30';const h=Math.floor(v);return h>=24?String(h-24):String(h);}
 function fmtR(s,e){return fmt(s)+'-'+fmt(e);}
 
 const HOLIDAYS=['2025-01-01','2025-01-13','2025-02-11','2025-02-23','2025-02-24','2025-03-20','2025-04-29','2025-05-03','2025-05-04','2025-05-05','2025-05-06','2025-07-21','2025-08-11','2025-09-15','2025-09-23','2025-10-13','2025-11-03','2025-11-23','2025-11-24','2026-01-01','2026-01-12','2026-02-11','2026-02-23','2026-03-20','2026-04-29','2026-05-03','2026-05-04','2026-05-05','2026-05-06','2026-07-20','2026-08-11','2026-09-21','2026-09-22','2026-09-23','2026-10-12','2026-11-03','2026-11-23'];
@@ -3567,10 +3567,11 @@ function isSpecialShift(staffName,ds){
   const tmpl=S.castTemplates&&S.castTemplates[staffName]||{};
   const date=new Date(ds.split('-')[0],ds.split('-')[1]-1,ds.split('-')[2],12,0,0);
   const dow=date.getDay(); // 0=日〜6=土
-  const t=tmpl[dow];
+  // GAS経由でキーが文字列化される場合も考慮
+  const t=tmpl[dow]||tmpl[String(dow)];
   if(!t)return true; // テンプレなし→特別
   if(t.off)return true; // テンプレが休みなのに入っている
-  return t.start!==sh.start||t.end!==sh.end;
+  return Math.abs((t.start||0)-(sh.start||0))>0.01||Math.abs((t.end||0)-(sh.end||0))>0.01;
 }
 
 function fmtShift(sh){
@@ -3602,7 +3603,7 @@ function renderStaffCal(){
     <div style="overflow-x:auto">
     <table style="width:100%;border-collapse:collapse;font-size:11px;min-width:max-content">
       <thead><tr>
-        <th style="padding:5px 8px;background:var(--navy);color:rgba(255,255,255,.8);font-weight:600;min-width:60px">名前</th>`;
+        <th style="padding:5px 8px;background:var(--navy);color:rgba(255,255,255,.8);font-weight:600;min-width:60px;position:sticky;left:0;z-index:2">名前</th>`;
   for(let i=0;i<7;i++){
     const d=new Date(weekStart);d.setDate(weekStart.getDate()+i);
     const isSun=d.getDay()===0,isSat=d.getDay()===6;
@@ -3612,17 +3613,18 @@ function renderStaffCal(){
     html+=`<th style="padding:5px 8px;background:${isT?'#2d4a6e':'var(--navy)'};color:${color};font-weight:600;min-width:70px;text-align:center">${d.getMonth()+1}/${d.getDate()}(${DLBL_SUN[d.getDay()]})</th>`;
   }
   html+=`</tr></thead><tbody>`;
+  // 今週テーブルは名前順のまま（個人ごとの行なのでソート不要）
   S.staffList.forEach(s=>{
     html+=`<tr>
-      <td style="padding:5px 8px;border-bottom:1px solid var(--border);font-weight:700;color:${s.color};background:#fff;white-space:nowrap">${s.name}</td>`;
+      <td style="padding:5px 8px;border-bottom:1px solid var(--border);font-weight:700;color:${s.color};background:#fff;white-space:nowrap;position:sticky;left:0;z-index:1">${s.name}</td>`;
     for(let i=0;i<7;i++){
       const d=new Date(weekStart);d.setDate(weekStart.getDate()+i);
       const ds=localDateStr(d);
       const sh=S.staffShifts&&S.staffShifts[s.name+'_'+ds];
       const special=isSpecialShift(s.name,ds);
       const isT=d.toDateString()===today.toDateString();
-      html+=`<td onclick="openStaffShiftModal('${ds}','${s.name}')" style="padding:4px 6px;border-bottom:1px solid var(--border);text-align:center;cursor:pointer;background:${special?'#fef08a':isT?'#f0fdf4':'#fff'};color:${special?'#713f12':isT?'#059669':'var(--text)'};font-weight:${sh?'700':'400'};white-space:nowrap">
-        ${sh&&sh.start!=null?`<span>${fmtShift(sh)}</span>${sh.memo?`<div style="font-size:9px;color:var(--text2)">${escHtml(sh.memo)}</div>`:''}`:'-'}
+      html+=`<td onclick="openStaffShiftModal('${ds}','${s.name}')" style="padding:4px 6px;border-bottom:1px solid var(--border);text-align:center;cursor:pointer;background:${special?'#fff3e0':isT?'#f0fdf4':'#fff'};color:${special?'#e65100':isT?'#059669':'var(--text)'};font-weight:${sh?'700':'400'};white-space:nowrap">
+        ${sh&&sh.start!=null?`<span style="${special?'background:#ff9800;color:#fff;border-radius:3px;padding:1px 4px;font-weight:700;':''}">${fmtShift(sh)}</span>${sh.memo?`<div style="font-size:9px;color:var(--text2)">${escHtml(sh.memo)}</div>`:''}`:'-'}
       </td>`;
     }
     html+=`</tr>`;
@@ -3667,26 +3669,28 @@ function renderStaffCal(){
 
     // 特別シフトがある人がいるか
     const hasSpecial=S.staffList.some(s=>isSpecialShift(s.name,ds));
-    const cellBg=hasSpecial?'#fef9c3':isToday?'#f0fdf4':'#fff';
+    const cellBg=hasSpecial?'#fff3e0':isToday?'#f0fdf4':'#fff';
 
     html+=`<div style="min-height:80px;border-radius:6px;border:${isToday?'2px solid #059669':'1px solid #e2e8f0'};background:${cellBg};padding:4px;font-size:10px;cursor:pointer"
       onclick="openDayStaffModal('${ds}')">
       <div style="font-weight:700;font-size:11px;color:${dateColor};margin-bottom:2px">${day}${isHol?'<span style="font-size:8px;color:#f87171;margin-left:2px">祝</span>':''}</div>`;
-    S.staffList.forEach(s=>{
-      const sh=S.staffShifts&&S.staffShifts[s.name+'_'+ds];
-      const special=isSpecialShift(s.name,ds);
-      if(sh&&sh.start!=null){
-        html+=`<div style="background:${special?'#fbbf24':s.color+'22'};color:${special?'#713f12':s.color};border-radius:3px;padding:1px 4px;margin-bottom:1px;font-weight:700;white-space:nowrap">${s.name} ${fmtShift(sh)}</div>`;
-      }
-    });
+    // 出勤時間が早い順にソート
+    [...S.staffList]
+      .map(s=>({s,sh:S.staffShifts&&S.staffShifts[s.name+'_'+ds]}))
+      .filter(({sh})=>sh&&sh.start!=null)
+      .sort((a,b)=>a.sh.start-b.sh.start)
+      .forEach(({s,sh})=>{
+        const special=isSpecialShift(s.name,ds);
+        html+=`<div style="background:${special?'#ff9800':s.color+'22'};color:${special?'#fff':s.color};border:${special?'1px solid #f57c00':'none'};border-radius:3px;padding:1px 4px;margin-bottom:1px;font-weight:700;white-space:nowrap">${s.name} ${fmtShift(sh)}</div>`;
+      });
     html+=`</div>`;
   }
   html+=`</div></div>`;
 
   // 凡例
   html+=`<div style="display:flex;gap:12px;margin-top:8px;font-size:11px;color:var(--text2)">
-    <span style="display:flex;align-items:center;gap:4px"><span style="width:14px;height:14px;background:#fef9c3;border:1px solid #e2e8f0;border-radius:3px;display:inline-block"></span>特別シフトあり</span>
-    <span style="display:flex;align-items:center;gap:4px"><span style="width:14px;height:14px;background:#fbbf24;border-radius:3px;display:inline-block"></span>テンプレ外シフト</span>
+    <span style="display:flex;align-items:center;gap:4px"><span style="width:14px;height:14px;background:#ff9800;border-radius:3px;display:inline-block"></span>テンプレ外シフト</span>
+    <span style="display:flex;align-items:center;gap:4px"><span style="width:14px;height:14px;background:#fff;border:1px solid #e2e8f0;border-radius:3px;display:inline-block"></span>テンプレ通りのシフト</span>
   </div>`;
 
   document.getElementById('mainContent').innerHTML=html;
@@ -3702,8 +3706,10 @@ function openDayStaffModal(ds){
   let html=`<div class="modal-title">📅 ${dayLabel} シフト</div>`;
   S.staffList.forEach(s=>{
     const sh=S.staffShifts&&S.staffShifts[s.name+'_'+ds]||{};
-    const sOpts=Array.from({length:17},(_,i)=>i+12).map(h=>`<option value="${h}" ${sh.start===h?'selected':''}>${h>=24?h-24+'(翌)':h}時</option>`).join('');
-    const eOpts=Array.from({length:17},(_,i)=>i+13).map(h=>`<option value="${h}" ${sh.end===h?'selected':''}>${h>=24?h-24+'(翌)':h}時</option>`).join('');
+    const _dH=[11.5,...Array.from({length:18},(_,i)=>i+12)];
+    const _dFmt=h=>h===11.5?'11:30':(h>=24?h-24+'(翌)':h)+'時';
+    const sOpts=_dH.slice(0,-1).map(h=>`<option value="${h}" ${sh.start===h?'selected':''}>${_dFmt(h)}</option>`).join('');
+    const eOpts=_dH.slice(1).map(h=>`<option value="${h}" ${sh.end===h?'selected':''}>${_dFmt(h)}</option>`).join('');
     html+=`<div style="display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid var(--border)">
       <span style="font-weight:700;color:${s.color};min-width:40px">${s.name}</span>
       <select id="dss_${s.name}_s" style="padding:3px 5px;border:1px solid var(--border);border-radius:5px;font-size:12px">
@@ -3729,7 +3735,7 @@ function saveDayStaffShifts(ds){
     const ev=document.getElementById('dss_'+s.name+'_e')?.value;
     const key=s.name+'_'+ds;
     if(!sv){delete S.staffShifts[key];}
-    else if(ev&&parseInt(ev)>parseInt(sv)){S.staffShifts[key]={start:parseInt(sv),end:parseInt(ev),memo:''};}
+    else if(ev&&parseFloat(ev)>parseFloat(sv)){S.staffShifts[key]={start:parseFloat(sv),end:parseFloat(ev),memo:''};}
   });
   saveState();closeModal();renderStaffCal();
 }
@@ -3769,8 +3775,8 @@ function saveStaffShiftFromModal(ds,sname){
   const ev=document.getElementById('ssEnd').value;
   const memo=document.getElementById('ssMemo').value;
   if(sv===''){ saveStaffShift(ds,sname,null,null,''); return; }
-  if(ev===''||parseInt(ev)<=parseInt(sv)){openInfoModal('退勤時間を正しく入力してください');return;}
-  saveStaffShift(ds,sname,parseInt(sv),parseInt(ev),memo);
+  if(ev===''||parseFloat(ev)<=parseFloat(sv)){openInfoModal('退勤時間を正しく入力してください');return;}
+  saveStaffShift(ds,sname,parseFloat(sv),parseFloat(ev),memo);
 }
 
 function saveStaffShift(ds,sname,start,end,memo){
@@ -3831,8 +3837,8 @@ function saveStaffTmpl(sname){
     const eEl=document.getElementById('stmpl_'+sname+'_'+dow+'_e');
     const offEl=document.getElementById('stmpl_'+sname+'_'+dow+'_off');
     const isOff=offEl&&offEl.checked;
-    const sv=sEl&&sEl.value!==''?parseInt(sEl.value):null;
-    const ev=eEl&&eEl.value!==''?parseInt(eEl.value):null;
+    const sv=sEl&&sEl.value!==''?parseFloat(sEl.value):null;
+    const ev=eEl&&eEl.value!==''?parseFloat(eEl.value):null;
     if(isOff){S.castTemplates[sname][dow]={off:true};}
     else if(sv!=null&&ev!=null){S.castTemplates[sname][dow]={start:sv,end:ev,off:false};}
     else{delete S.castTemplates[sname][dow];}
@@ -3868,13 +3874,15 @@ function printStaffCal(){
 
     // スタッフシフト
     let shiftLines='';
-    S.staffList.forEach(s=>{
-      const sh=S.staffShifts&&S.staffShifts[s.name+'_'+ds];
-      if(sh&&sh.start!=null){
+    // 出勤時間が早い順にソート
+    [...S.staffList]
+      .map(s=>({s,sh:S.staffShifts&&S.staffShifts[s.name+'_'+ds]}))
+      .filter(({sh})=>sh&&sh.start!=null)
+      .sort((a,b)=>a.sh.start-b.sh.start)
+      .forEach(({s,sh})=>{
         const special=isSpecialShift(s.name,ds);
-        shiftLines+=`<div style="font-size:9px;font-weight:700;color:${colorMap[s.name]||'#333'};background:${special?'#fef08a':colorMap[s.name]+'18'};border-radius:2px;padding:1px 3px;margin-bottom:1px;white-space:nowrap">${s.name} ${fmtShift(sh)}</div>`;
-      }
-    });
+        shiftLines+=`<div style="font-size:9px;font-weight:700;background:${special?'#ff9800':colorMap[s.name]+'22'};color:${special?'#fff':colorMap[s.name]};border:${special?'1px solid #f57c00':'none'};border-radius:2px;padding:1px 3px;margin-bottom:1px;white-space:nowrap">${s.name} ${fmtShift(sh)}</div>`;
+      });
 
     cells.push(`<td style="border:1px solid #ccc;vertical-align:top;padding:3px;min-height:60px;background:${isToday?'#f0fdf4':'#fff'}">
       <div style="font-size:10px;font-weight:700;color:${dateColor};margin-bottom:2px">${day}${isHol?'<span style="font-size:7px;color:#dc2626">祝</span>':''}</div>
@@ -3933,14 +3941,15 @@ function applyStaffTemplates(){
       const date=new Date(staffCalY,staffCalM,d,12,0,0);
       const ds=localDateStr(date);
       const dow=date.getDay();
-      const t=tmpl[dow];
-      if(!t||t.off||t.start==null)continue;
-      if(S.staffShifts[s.name+'_'+ds])continue; // 既入力スキップ
-      S.staffShifts[s.name+'_'+ds]={start:t.start,end:t.end,memo:''};
+      const t=tmpl[dow]||tmpl[String(dow)];
+      if(!t||t.off||t.start==null||t.start===undefined)continue;
+      // 既存のメモは保持しつつ上書き適用
+      const existingMemo=(S.staffShifts[s.name+'_'+ds]||{}).memo||'';
+      S.staffShifts[s.name+'_'+ds]={start:t.start,end:t.end,memo:existingMemo};
       cnt++;
     }
   });
-  if(cnt===0){openInfoModal('適用できるシフトがありませんでした');return;}
+  if(cnt===0){openInfoModal('テンプレートが設定されていません');return;}
   saveState();
   openInfoModal(`✅ ${cnt}件のシフトを適用しました`,renderStaffCal);
 }
@@ -3968,7 +3977,7 @@ function renderCastInfo(){
   const u=sorted.find(x=>x.name===castInfoSelected)||sorted[0];
 
   // 配布用URL（Netlify固定URL）
-  const fileUrl='https://sakurashift.netlify.app/';
+  const fileUrl='https://sakuramoong-app.github.io/sakurashift/';
   // キャスト名をURLパラメータに付与
   const castUrl=fileUrl+'?cast='+encodeURIComponent(u?u.name:'');
 

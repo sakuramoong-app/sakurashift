@@ -2594,6 +2594,8 @@ function confShiftIC(castName,wk){
         history=Array.isArray(prev.history)?[...prev.history]:(prev.bizDate?[prev.bizDate]:[]);
         // 同じ日付は追加しない
         if(!history.includes(_bizDate))history.push(_bizDate);
+        // 最大5件に制限
+        if(history.length>5)history=history.slice(-5);
       } else {
         history=[_bizDate];
       }
@@ -2605,6 +2607,7 @@ function confShiftIC(castName,wk){
   showSyncOverlay();
   const body=new FormData();
   body.append('action','save');
+  body.append('token','sakura2025shift');
   body.append('data',JSON.stringify(S));
   fetch(GAS_URL,{method:'POST',body})
     .then(()=>{

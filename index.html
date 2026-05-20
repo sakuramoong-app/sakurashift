@@ -595,26 +595,27 @@ async function loadFromGAS(){
       const gasShifts=Object.keys(migratedGas.shifts||{}).length;
       const gasTime=migratedGas._savedAt||0;
 
-      console.log('[loadFromGAS] local:'+localShifts+'件 gas:'+gasShifts+'件 localTime:'+new Date(localTime).toLocaleTimeString()+' gasTime:'+new Date(gasTime).toLocaleTimeString());
+      console.log('[loadFromGAS] local:'+localShifts+'件 gas:'+gasShifts+'件');
 
-      // localの方が新しい、またはシフト件数が多い場合はlocalを優先
-      const localIsNewer=localTime>gasTime;
-      const localHasMore=localShifts>gasShifts;
+      // GASデータを基本的に正とする
+      // ただしGASのシフト件数がlocalの半分未満の場合のみlocalを保護
+      const gasIsEmpty=gasShifts===0&&localShifts>0;
+      const gasMissingTooMuch=gasShifts<localShifts*0.5&&localShifts>5;
 
-      if(localData&&(localIsNewer||localHasMore)){
+      if(localData&&(gasIsEmpty||gasMissingTooMuch)){
+        // GASデータが明らかに欠損→localを保護してGASに再保存
         S=migrateState(localData)||localData;
         S.operationLog=localData.operationLog||[];
         if(!S.checkData)S.checkData={};
-        console.log('[loadFromGAS] ローカル優先 (newer:'+localIsNewer+' more:'+localHasMore+')');
-        if(gasShifts<localShifts){
-          showToast('🔄 ローカルデータをGASに同期中...');
-          setTimeout(()=>saveState(),500);
-        }
+        console.log('[loadFromGAS] ローカル保護（GAS欠損）local:'+localShifts+' gas:'+gasShifts);
+        showToast('🔄 ローカルデータをGASに保存中...');
+        setTimeout(()=>saveState(),500);
       } else {
+        // 通常: GASデータを使用（内勤の変更が反映される）
         S=migratedGas;
         S.operationLog=localData&&localData.operationLog||[];
         if(!S.checkData)S.checkData={};
-        console.log('[loadFromGAS] GAS優先 shifts:'+gasShifts);
+        console.log('[loadFromGAS] GAS使用 shifts:'+gasShifts);
       }
     } else {
       // GASが空→localを絶対に守る

@@ -583,19 +583,36 @@ async function loadFromGAS(){
       const gasData=JSON.parse(json.data);
       const migratedGas=migrateState(gasData)||gasData;
 
-      // localのoperationLogを引き継ぐ
-      let localLog=[];
+      // localStorageのデータを取得
+      let localData=null;
       try{
         const ls=localStorage.getItem('shiftSysV8');
-        if(ls){const ld=JSON.parse(ls);localLog=ld.operationLog||[];}
+        if(ls)localData=JSON.parse(ls);
       }catch(e){}
 
-      S=migratedGas;
-      S.operationLog=localLog; // ログはlocalStorageから復元
-      // checkDataは圧縮保存されているのでそのまま使用
-      // 存在しないキーはデフォルト{checked:false}として扱う
-      if(!S.checkData)S.checkData={};
+      const gasShifts=Object.keys(migratedGas.shifts||{}).length;
+      const localShifts=Object.keys(localData&&localData.shifts||{}).length;
+      const gasTime=migratedGas._savedAt||0;
+      const localTime=localData&&localData._savedAt||0;
+
+      // GASのシフト件数がlocalより極端に少ない場合はlocalを優先
+      if(localData&&localShifts>gasShifts*2&&localTime>gasTime-3600000){
+        // localが明らかに多い→localを使い、GASに保存し直す
+        S=migrateState(localData)||localData;
+        console.log('[loadFromGAS] local has more data, keeping local. local:'+localShifts+' gas:'+gasShifts);
+        showToast('⚠️ GASより新しいデータがあります。GASに再保存します...');
+        setTimeout(()=>saveState(),1000);
+      } else {
+        S=migratedGas;
+        S.operationLog=localData&&localData.operationLog||[];
+        if(!S.checkData)S.checkData={};
+        console.log('[loadFromGAS] using GAS data. shifts:'+gasShifts);
+      }
       try{localStorage.setItem('shiftSysV8',JSON.stringify(S));}catch(e){}
+    } else {
+      // GASが空→localStorageを使い続ける
+      console.log('[loadFromGAS] GAS empty, keeping local data');
+      showToast('⚠️ GASにデータがありません。ローカルデータを使用中');
     }
     gasLoaded=true;
     hideSyncOverlay();

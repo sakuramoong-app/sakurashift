@@ -2778,7 +2778,9 @@ function confShiftIC(castName,wk){
         if(S.checkData[cdKey])S.checkData[cdKey]={checked:false,checkedBy:'',color:''};
       });
     });
-    sub.changedDates=dates;
+    // 既存のchangedDatesに追加（上書きしない）
+    const existing=sub.changedDates||[];
+    sub.changedDates=[...new Set([...existing,...dates])];
     sub.status='change_unlocked';
     delete _pendingChanges[pk];
     addLog('change_unlock',castName,wk,dates.join(','));

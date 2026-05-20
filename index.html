@@ -1870,9 +1870,24 @@ function showStaffPage(p){
 // ===== STATUS LIST (ステータス一覧) =====
 function renderStatusList(){
   // 今週・来週の2週間のみ表示
-  let allWks;
-  try{allWks=[getCurrWk(),getNextWk()];}catch(e){allWks=[];}
-  if(!allWks.length||!slWeekKey||!allWks.includes(slWeekKey)){try{slWeekKey=getCurrWk();}catch(e){slWeekKey='';}}  
+  // 今日から翌月末までの全週を生成
+  let allWks=[];
+  try{
+    const today=new Date();
+    // 翌月末
+    const nextMonthEnd=new Date(today.getFullYear(),today.getMonth()+2,0);
+    // 今週の月曜日から開始
+    const start=new Date(today);
+    const dow=start.getDay();
+    start.setDate(start.getDate()-(dow===0?6:dow-1));
+    start.setHours(0,0,0,0);
+    const cur=new Date(start);
+    while(cur<=nextMonthEnd){
+      allWks.push(getWeekKey(new Date(cur)));
+      cur.setDate(cur.getDate()+7);
+    }
+  }catch(e){allWks=[getCurrWk(),getNextWk()];}
+  if(!allWks.length||!slWeekKey||!allWks.includes(slWeekKey)){try{slWeekKey=getCurrWk();}catch(e){slWeekKey='';}}
 
   const sMap=STATUS_LABEL;
   const bMap=STATUS_BADGE;
@@ -1936,7 +1951,7 @@ function renderStatusList(){
   html+=`</div>`;
 
   // フィルター適用済みキャストリスト
-  let castList=S.castList.filter((u,i)=>{
+  let castList=[...S.castList].sort((a,b)=>a.name.localeCompare(b.name,'ja')).filter((u,i)=>{
     if(slFilter==='all')return true;
     if(slFilter==='unsubmitted')return!S.submissions[u.name+'_'+slWeekKey];
     const s=S.submissions[u.name+'_'+slWeekKey];

@@ -2267,6 +2267,7 @@ function renderInputCheckBody(){
     const items=[...new Set(['記録簿',...stores])];
     const isConf=sub.status==='confirmed'||sub.status==='change_confirmed';
     const changedDates=sub.changedDates||[];
+    const _pk=u.name+'_'+icWeekKey;
     const dates=getWeekDates(icWeekKey);
 
     // チェック集計

@@ -517,7 +517,7 @@ const AVC=['av-0','av-1','av-2','av-3','av-4'];
 function avc(n){const i=(S.castList||[]).findIndex(u=>u.name===n);return AVC[i>=0?i%5:0];}
 
 // ===== STATE =====
-const GAS_URL='https://script.google.com/macros/s/AKfycbzdjruZJ6cy9WjkVjmLQFbub09bbYrxcLbqegJifDiIsdPxkBv22dR5y91aQxpVuRQ5/exec';
+const GAS_URL='https://script.google.com/macros/s/AKfycbxO8CoQFnRB3HZ4I_Lw2LcaO0aldloa2iEARdUGxJ-Vh3xgLp0jdynQ1RdCjOueMHww/exec';
 let S=initState(); // 初期値（GASロード前）
 let gasLoaded=false;
 
@@ -582,33 +582,16 @@ async function loadFromGAS(){
     if(json.data&&json.data!=='{}'){
       const gasData=JSON.parse(json.data);
       const migratedGas=migrateState(gasData)||gasData;
-      
-      // localStorageの最新データを取得
-      let localData=null;
+
+      // localのoperationLogを引き継ぐ
+      let localLog=[];
       try{
         const ls=localStorage.getItem('shiftSysV8');
-        if(ls) localData=JSON.parse(ls);
+        if(ls){const ld=JSON.parse(ls);localLog=ld.operationLog||[];}
       }catch(e){}
-      
-      if(localData){
-        // GASデータをベースに、localStorageの重要データをマージ
-        // checkData/checkedDates/submissions/shiftsはGASを正とする
-        // ただし localData がより新しい場合はlocalDataを優先
-        const gasTime=migratedGas._savedAt||0;
-        const localTime=localData._savedAt||0;
-        
-        if(localTime>gasTime){
-          // localDataがより新しい → localDataを使い、GASに再保存
-          S=migrateState(localData)||localData;
-          console.log('[loadFromGAS] local is newer, using local data');
-        } else {
-          // GASが新しい → GASデータを使用
-          S=migratedGas;
-          console.log('[loadFromGAS] GAS is newer, using GAS data');
-        }
-      } else {
-        S=migratedGas;
-      }
+
+      S=migratedGas;
+      S.operationLog=localLog; // ログはlocalStorageから復元
       try{localStorage.setItem('shiftSysV8',JSON.stringify(S));}catch(e){}
     }
     gasLoaded=true;
@@ -644,44 +627,38 @@ function initState(){
   };
 }
 function saveState(){
-  // operationLog を50件に削減してデータサイズを抑制
-  if(S.operationLog&&S.operationLog.length>50) S.operationLog=S.operationLog.slice(0,50);
-  
-  // GASに送るデータから画像データを除外（localStorageで管理）
+  // operationLog は除外（データサイズ削減）
+  // localStorageにのみ保存
+  S._savedAt=Date.now();
+  try{localStorage.setItem('shiftSysV8',JSON.stringify(S));}catch(e){}
+
+  if(!GAS_URL) return Promise.resolve(false);
+
+  // GASに送るデータを構築（画像・ログを除外）
   const gasData={...S};
-  // noticeImage/personalNoticeImages はlocalStorageのみ
   delete gasData.noticeImage;
   delete gasData.personalNoticeImages;
-  
-  gasData._savedAt=Date.now();
-  S._savedAt=gasData._savedAt;
+  delete gasData.operationLog; // ログは除外
+
   const dataStr=JSON.stringify(gasData);
-  console.log('[saveState] data size:', dataStr.length, 'chars');
-  
-  // localStorageには全データを保存
-  S._savedAt=S._savedAt||Date.now();
-  try{localStorage.setItem('shiftSysV8',JSON.stringify(S));}catch(e){}
-  
-  // GASにPOSTで非同期保存（Promiseを返す）
-  if(GAS_URL){
-    const body=new FormData();
-    body.append('action','save');
-    body.append('token','sakura2025shift');
-    body.append('data',dataStr);
-    return fetch(GAS_URL,{method:'POST',body})
-      .then(r=>r.json())
-      .then(result=>{
-        if(result&&result.error){
-          console.warn('GAS save error:',result.error);
-          showToast('⚠️ GAS保存エラー: '+result.error);
-          return false;
-        }
-        console.log('[saveState] GAS saved OK');
-        return true;
-      })
-      .catch(e=>{console.warn('GAS save failed',e);return false;});
-  }
-  return Promise.resolve(false);
+  console.log('[saveState] size:', Math.round(dataStr.length/1024)+'KB');
+
+  const body=new FormData();
+  body.append('action','save');
+  body.append('token','sakura2025shift');
+  body.append('data',dataStr);
+  return fetch(GAS_URL,{method:'POST',body})
+    .then(r=>r.json())
+    .then(result=>{
+      if(result&&result.error){
+        console.warn('GAS save error:',result.error);
+        showToast('⚠️ GAS保存エラー: '+result.error);
+        return false;
+      }
+      console.log('[saveState] GAS saved OK');
+      return true;
+    })
+    .catch(e=>{console.warn('GAS save failed',e);return false;});
 }
 
 // Migration: ensure new fields
@@ -872,26 +849,74 @@ function toggleRestRows(castName){
 }
 
 function checkDataSize(){
-  const gasData={...S};
-  delete gasData.noticeImage;
-  delete gasData.personalNoticeImages;
-  const str=JSON.stringify(gasData);
-  const kb=Math.round(str.length/1024);
+  const limit=45; // 1シートあたりの上限目安KB
+  // 各シートに分割したサイズを計算
+  const mainData={...S};
+  delete mainData.shifts; delete mainData.submissions;
+  delete mainData.checkData; delete mainData.checkNotes;
+  delete mainData.noticeImage; delete mainData.personalNoticeImages;
+  delete mainData.operationLog;
+
+  const sizes={
+    main:    Math.round(JSON.stringify(mainData).length/1024),
+    shifts:  Math.round(JSON.stringify({shifts:S.shifts||{}}).length/1024),
+    subs:    Math.round(JSON.stringify({submissions:S.submissions||{}}).length/1024),
+    checks:  Math.round(JSON.stringify({checkData:S.checkData||{},checkNotes:S.checkNotes||{}}).length/1024),
+  };
+  const maxSize=Math.max(...Object.values(sizes));
   const el=document.getElementById('dataSizeResult');
-  const limit=45; // GAS A1セルの実用的な上限 ~45KB
-  const details=[
-    `submissions: ${JSON.stringify(S.submissions||{}).length}文字`,
-    `shifts: ${JSON.stringify(S.shifts||{}).length}文字`,
-    `checkData: ${JSON.stringify(S.checkData||{}).length}文字`,
-    `operationLog: ${JSON.stringify(S.operationLog||[]).length}文字`,
-  ];
   if(el) el.innerHTML=`
-    <div style="font-weight:700;color:${kb>limit?'#dc2626':'#059669'}">
-      合計: ${kb}KB / 上限目安${limit}KB ${kb>limit?'❌ 超過！':'✅ OK'}
+    <div style="font-weight:700;color:${maxSize>limit?'#dc2626':'#059669'}">
+      ${maxSize>limit?'❌ いずれかのシートが超過':'✅ 全シートOK'}（上限目安${limit}KB/シート）
     </div>
-    <div style="margin-top:4px">${details.join('<br>')}</div>
-    ${kb>limit?'<div style="color:#dc2626;margin-top:4px">⚠️ データが大きすぎてGAS保存に失敗している可能性があります。operationLogをリセットしてください。</div>':''}
+    <div style="margin-top:4px;font-size:11px;line-height:1.8">
+      📋 設定データ：${sizes.main}KB<br>
+      📅 シフト：${sizes.shifts}KB<br>
+      📤 提出履歴：${sizes.subs}KB<br>
+      ✅ チェックデータ：${sizes.checks}KB ${sizes.checks>limit?'❌':'✅'}<br>
+      📋 ログ：${Math.round(JSON.stringify(S.operationLog||[]).length/1024)}KB（GAS除外）
+    </div>
   `;
+}
+
+// 古いチェックデータ（4週間以上前）を削除
+function cleanOldCheckData(){
+  const cutoff=new Date();
+  cutoff.setDate(cutoff.getDate()-28); // 28日前
+  const cutoffStr=cutoff.toISOString().slice(0,10);
+  let removed=0;
+  Object.keys(S.checkData||{}).forEach(k=>{
+    // キー形式: castName_weekKey_ds_store
+    // weekKeyはYYYY-MM-DD形式
+    const parts=k.split('_');
+    if(parts.length>=3){
+      // dsを取得（3番目の要素）
+      const ds=parts[2];
+      if(ds&&ds<cutoffStr){
+        delete S.checkData[k];
+        removed++;
+      }
+    }
+  });
+  // checkedDatesも同様に削除
+  Object.keys(S.submissions||{}).forEach(subKey=>{
+    const sub=S.submissions[subKey];
+    if(sub&&sub.checkedDates){
+      Object.keys(sub.checkedDates).forEach(ds=>{
+        if(ds<cutoffStr){
+          delete sub.checkedDates[ds];
+          removed++;
+        }
+      });
+    }
+  });
+  if(removed===0){
+    openInfoModal('削除できる古いデータはありませんでした');
+    return;
+  }
+  saveState().then(()=>{
+    openInfoModal(`✅ ${removed}件の古いデータを削除しました`,()=>{renderSettings();});
+  });
 }
 // ===== ログイン失敗ロック管理 =====
 function getLoginFailures(){
@@ -2120,8 +2145,8 @@ function renderInputCheck(){
 
 function renderInputCheckBody(){
   const q=(icSearchQuery||'').trim();
-  // グループ絞り込み + 検索絞り込み
-  let castList=S.castList.filter(u=>{
+  // グループ絞り込み + 検索絞り込み + あいうえお順ソート
+  let castList=[...S.castList].sort((a,b)=>a.name.localeCompare(b.name,'ja')).filter(u=>{
     if(icSelectedGroup&&icSelectedGroup!=='すべて'){
       const g=KANA_GROUPS.find(x=>x.label===icSelectedGroup);
       if(g&&!g.chars.includes(u.name[0]))return false;
@@ -2326,6 +2351,18 @@ function renderInputCheckBody(){
   submittedCasts.forEach(u=>{
     const wrap=document.getElementById('wrap_'+u.name);
     if(wrap&&icScrollPositions[u.name]!=null)wrap.scrollLeft=icScrollPositions[u.name];
+  });
+
+  // 折りたたみ状態を再適用（DOM再生成後）
+  Object.keys(_restCollapsed).forEach(castName=>{
+    if(!_restCollapsed[castName])return;
+    const tbl=document.getElementById('tbl_'+castName);
+    if(!tbl)return;
+    tbl.querySelectorAll('tr[data-rest="1"][data-cast="'+castName+'"]').forEach(tr=>{
+      tr.style.display='none';
+    });
+    const btn=document.getElementById('restToggle_'+castName);
+    if(btn)btn.textContent='🗂️ 休日を表示する';
   });
 }
 
@@ -3114,6 +3151,18 @@ function renderSettings(){
         <button class="btn btn-danger btn-sm" onclick="resetEverything()" style="background:#7f1d1d;border-color:#7f1d1d">⚠️ キャスト含む完全リセット</button>
       </div>
     </div>
+  </div>`;
+
+  // データサイズ確認
+  html+=`<div class="card" style="margin-top:8px">
+    <div class="card-title" style="margin-bottom:6px"><span class="ct-icon">📊</span>データサイズ確認</div>
+    <div style="font-size:12px;color:var(--text2);margin-bottom:8px">GAS保存に失敗している場合、データが大きすぎる可能性があります。</div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <button class="btn btn-outline btn-sm" onclick="checkDataSize()">💾 データサイズを確認</button>
+      <button class="btn btn-danger btn-sm" onclick="cleanOldCheckData()">🗑️ 古いチェックデータを削除</button>
+    </div>
+    <div style="font-size:11px;color:var(--text2);margin-top:4px">※ 月1回程度、古いチェックデータを削除するとデータサイズを抑えられます</div>
+    <div id="dataSizeResult" style="margin-top:8px;font-size:12px"></div>
   </div>`;
 
   // マスタ設定保存ボタン

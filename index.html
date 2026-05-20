@@ -2179,8 +2179,12 @@ function renderInputCheck(){
   // 今週・来週・翌々週も常に含める
   [getCurrWk(),getNextWk(),getNextNextWk()].forEach(w=>submittedWks.add(w));
   // 降順ソート（新しい週が先頭）最大8週
-  const wks=[...submittedWks].sort().slice(0,8); // 昇順：左が古い週
-  if(!icWeekKey||!wks.includes(icWeekKey))icWeekKey=wks[0];
+  const wks=[...submittedWks].sort().slice(-8); // 昇順：最新8週
+  // デフォルトは今週（なければ最新週）
+  const currWkDef=getCurrWk();
+  if(!icWeekKey||!wks.includes(icWeekKey)){
+    icWeekKey=wks.includes(currWkDef)?currWkDef:(wks[wks.length-1]||currWkDef);
+  }
 
   // グループ選択モード
   if(icGroupMode){

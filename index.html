@@ -896,6 +896,7 @@ function setNoticeImage(key,data){
 
 // 休日行の折りたたみトグル
 const _restCollapsed={};
+const _pendingChanges={}; // {castName_wk: Set([ds,...])}
 function toggleRestRows(castName){
   _restCollapsed[castName]=!_restCollapsed[castName];
   const collapsed=_restCollapsed[castName];
@@ -1177,7 +1178,9 @@ function isConfirmed(name,ds){
   // 提出済み全ステータスをロック（waiting以降は全てロック）
   // 変更可能（change_unlocked）のみキャストが再提出できる
   if(s.status==='change_unlocked'){
-    return false; // 週全体解除
+    // changedDatesが空なら全日解除、あれば指定日のみ
+    if(!s.changedDates||s.changedDates.length===0)return false;
+    return !s.changedDates.includes(ds);
   }
   const lockedStatuses=['waiting','inputting','confirmed',
     'change_submitted','change_inputting','change_confirmed'];
@@ -2332,7 +2335,8 @@ function renderInputCheckBody(){
       const shiftLabel=sh&&sh.start!=null?fmtR(sh.start,sh.end):'';
       const noteKey=u.name+'_'+icWeekKey+'_'+ds;
       const noteVal=S.checkNotes[noteKey]||'';
-      const isChangedDay=changedDates.includes(ds);
+      const isChangedDay=(_pendingChanges[_pk]&&_pendingChanges[_pk].has(ds))||changedDates.includes(ds);
+      const isPending=_pendingChanges[_pk]&&_pendingChanges[_pk].has(ds);
 
       // この日のチェック状態分析
       const dayChecks=items.map(it=>{
@@ -2405,9 +2409,9 @@ function renderInputCheckBody(){
           <span class="day-badge ${dayBadgeCls}" style="font-size:10px;white-space:normal;word-break:keep-all;line-height:1.4;text-align:center;display:block;width:100%">${dayBadge}</span>
         </td>
         <td class="ic-change-cell" rowspan="2" style="position:sticky;left:72px;z-index:1;background:inherit;border-right:1px solid var(--border)!important;vertical-align:middle;min-width:44px;width:44px">
-          <button style="padding:3px 6px;font-size:11px;font-weight:700;background:${isChangedDay?'#fef3c7':'#e0e7ff'};color:${isChangedDay?'#92400e':'#3730a3'};border:1px solid ${isChangedDay?'#fcd34d':'#c7d2fe'};border-radius:5px;cursor:pointer;display:block;margin:0 auto;white-space:nowrap"
+          <button style="padding:3px 6px;font-size:11px;font-weight:700;background:${isPending?'#fef08a':isChangedDay?'#fde68a':'#e0e7ff'};color:${isPending?'#78350f':isChangedDay?'#92400e':'#3730a3'};border:1px solid ${isPending?'#fbbf24':isChangedDay?'#fcd34d':'#c7d2fe'};border-radius:5px;cursor:pointer;display:block;margin:0 auto;white-space:nowrap"
             onclick="icRequestChange('${u.name}','${icWeekKey}','${ds}')">
-            ${isChangedDay?'変更中':'変更'}
+            ${isPending?'✓変更':'変更'}
           </button>
         </td>
         <td class="ic-date-cell ${dateCls}" rowspan="2" style="position:sticky;left:116px;z-index:1;vertical-align:middle;text-align:center;min-width:88px;width:88px;border-right:2px solid var(--border)!important;padding:4px 3px!important">
@@ -2751,8 +2755,31 @@ function icSaveNote(noteKey,val){
 // 「確定」ボタン
 function confShiftIC(castName,wk){
   const k=castName+'_'+wk;
-  if(!S.submissions[k])return;
+  if(!S.submissions[k]){openInfoModal('提出データがありません');return;}
   const sub=S.submissions[k];
+
+  // pendingChanges がある場合は変更許可処理
+  const pk=castName+'_'+wk;
+  if(_pendingChanges[pk]&&_pendingChanges[pk].size>0){
+    const dates=[..._pendingChanges[pk]];
+    const stores=S.castStores[castName]||[];
+    const items=[...new Set(['記録簿',...stores])];
+    dates.forEach(ds=>{
+      items.forEach(it=>{
+        const cdKey=castName+'_'+wk+'_'+ds+'_'+it;
+        if(S.checkData[cdKey])S.checkData[cdKey]={checked:false,checkedBy:'',color:''};
+      });
+    });
+    sub.changedDates=dates;
+    sub.status='change_unlocked';
+    delete _pendingChanges[pk];
+    addLog('change_unlock',castName,wk,dates.join(','));
+    saveState().then(()=>{
+      const labels=dates.map(d=>{const dt=new Date(d);return (dt.getMonth()+1)+'/'+(dt.getDate());}).join('・');
+      openInfoModal(`🔓 ${castName}さん（${labels}）の変更を許可しました。キャストにシフト再提出を促してください。`,renderInputCheck);
+    });
+    return;
+  }
 
   const stores=S.castStores[castName]||[];
   const items=[...new Set(['記録簿',...stores])];
@@ -2848,17 +2875,16 @@ function confShiftIC(castName,wk){
 function icRequestChange(castName,wk,ds){
   const k=castName+'_'+wk;
   if(!S.submissions[k])return;
-  const sub=S.submissions[k];
-  openModal(`<div class="modal-title">🔄 シフト変更許可</div>
-    <p style="font-size:13px;color:var(--text2);margin-bottom:12px">
-      <b>${castName}</b> さん（${getWeekLabel(wk)}）の<br>
-      シフトを変更可能にします。<br><br>
-      キャストはこの週のシフトを再提出できるようになります。
-    </p>
-    <div class="modal-actions">
-      <button class="btn btn-outline" onclick="closeModal()">キャンセル</button>
-      <button class="btn btn-warning" onclick="closeModal();icDoRequestChange('${castName}','${wk}','${ds}')">🔓 変更を許可する</button>
-    </div>`);
+  // pendingChanges にトグル
+  const pk=castName+'_'+wk;
+  if(!_pendingChanges[pk])_pendingChanges[pk]=new Set();
+  if(_pendingChanges[pk].has(ds)){
+    _pendingChanges[pk].delete(ds);
+  } else {
+    _pendingChanges[pk].add(ds);
+  }
+  // ボタンの色をDOMで即更新
+  renderInputCheckBody();
 }
 
 function icDoRequestChange(castName,wk,ds){

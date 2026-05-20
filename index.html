@@ -580,8 +580,35 @@ async function loadFromGAS(){
     const res=await fetch(GAS_URL+'?action=load&token=sakura2025shift');
     const json=await res.json();
     if(json.data&&json.data!=='{}'){
-      const data=JSON.parse(json.data);
-      S=migrateState(data)||S;
+      const gasData=JSON.parse(json.data);
+      const migratedGas=migrateState(gasData)||gasData;
+      
+      // localStorageの最新データを取得
+      let localData=null;
+      try{
+        const ls=localStorage.getItem('shiftSysV8');
+        if(ls) localData=JSON.parse(ls);
+      }catch(e){}
+      
+      if(localData){
+        // GASデータをベースに、localStorageの重要データをマージ
+        // checkData/checkedDates/submissions/shiftsはGASを正とする
+        // ただし localData がより新しい場合はlocalDataを優先
+        const gasTime=migratedGas._savedAt||0;
+        const localTime=localData._savedAt||0;
+        
+        if(localTime>gasTime){
+          // localDataがより新しい → localDataを使い、GASに再保存
+          S=migrateState(localData)||localData;
+          console.log('[loadFromGAS] local is newer, using local data');
+        } else {
+          // GASが新しい → GASデータを使用
+          S=migratedGas;
+          console.log('[loadFromGAS] GAS is newer, using GAS data');
+        }
+      } else {
+        S=migratedGas;
+      }
       try{localStorage.setItem('shiftSysV8',JSON.stringify(S));}catch(e){}
     }
     gasLoaded=true;
@@ -617,17 +644,44 @@ function initState(){
   };
 }
 function saveState(){
-  // localStorageに即時保存
+  // operationLog を50件に削減してデータサイズを抑制
+  if(S.operationLog&&S.operationLog.length>50) S.operationLog=S.operationLog.slice(0,50);
+  
+  // GASに送るデータから画像データを除外（localStorageで管理）
+  const gasData={...S};
+  // noticeImage/personalNoticeImages はlocalStorageのみ
+  delete gasData.noticeImage;
+  delete gasData.personalNoticeImages;
+  
+  gasData._savedAt=Date.now();
+  S._savedAt=gasData._savedAt;
+  const dataStr=JSON.stringify(gasData);
+  console.log('[saveState] data size:', dataStr.length, 'chars');
+  
+  // localStorageには全データを保存
+  S._savedAt=S._savedAt||Date.now();
   try{localStorage.setItem('shiftSysV8',JSON.stringify(S));}catch(e){}
-  // GASにPOSTで非同期保存
+  
+  // GASにPOSTで非同期保存（Promiseを返す）
   if(GAS_URL){
     const body=new FormData();
     body.append('action','save');
     body.append('token','sakura2025shift');
-    body.append('data',JSON.stringify(S));
-    fetch(GAS_URL,{method:'POST',body})
-      .catch(e=>console.warn('GAS save failed',e));
+    body.append('data',dataStr);
+    return fetch(GAS_URL,{method:'POST',body})
+      .then(r=>r.json())
+      .then(result=>{
+        if(result&&result.error){
+          console.warn('GAS save error:',result.error);
+          showToast('⚠️ GAS保存エラー: '+result.error);
+          return false;
+        }
+        console.log('[saveState] GAS saved OK');
+        return true;
+      })
+      .catch(e=>{console.warn('GAS save failed',e);return false;});
   }
+  return Promise.resolve(false);
 }
 
 // Migration: ensure new fields
@@ -646,6 +700,7 @@ let currentUser=null,currentType=null,loginType='cast';
 let currentStaffName=''; // 現在選択中の内勤名
 let calY=new Date().getFullYear(),calM=new Date().getMonth();
 let calChecked=new Set();
+let lastBulkStart=12,lastBulkEnd=13; // 最後に使った一括時刻
 let icSearchQuery='';
 let slWeekKey=''; // ステータス一覧の選択週
 let slFilter='all'; // ステータスフィルター
@@ -815,6 +870,29 @@ function toggleRestRows(castName){
   const btn=document.getElementById('restToggle_'+castName);
   if(btn)btn.textContent=collapsed?'🗂️ 休日を表示する':'🗂️ 休日を折りたたむ';
 }
+
+function checkDataSize(){
+  const gasData={...S};
+  delete gasData.noticeImage;
+  delete gasData.personalNoticeImages;
+  const str=JSON.stringify(gasData);
+  const kb=Math.round(str.length/1024);
+  const el=document.getElementById('dataSizeResult');
+  const limit=45; // GAS A1セルの実用的な上限 ~45KB
+  const details=[
+    `submissions: ${JSON.stringify(S.submissions||{}).length}文字`,
+    `shifts: ${JSON.stringify(S.shifts||{}).length}文字`,
+    `checkData: ${JSON.stringify(S.checkData||{}).length}文字`,
+    `operationLog: ${JSON.stringify(S.operationLog||[]).length}文字`,
+  ];
+  if(el) el.innerHTML=`
+    <div style="font-weight:700;color:${kb>limit?'#dc2626':'#059669'}">
+      合計: ${kb}KB / 上限目安${limit}KB ${kb>limit?'❌ 超過！':'✅ OK'}
+    </div>
+    <div style="margin-top:4px">${details.join('<br>')}</div>
+    ${kb>limit?'<div style="color:#dc2626;margin-top:4px">⚠️ データが大きすぎてGAS保存に失敗している可能性があります。operationLogをリセットしてください。</div>':''}
+  `;
+}
 // ===== ログイン失敗ロック管理 =====
 function getLoginFailures(){
   try{return JSON.parse(localStorage.getItem('loginFailures')||'{}');}catch(e){return {};}
@@ -946,12 +1024,10 @@ function syncAndReload(){
   if(btn){btn.textContent='🔄 同期中...';btn.disabled=true;}
   loadFromGAS().then(ok=>{
     if(btn){btn.textContent='🔄 同期';btn.disabled=false;}
-    if(ok){
-      if(currentType==='cast') showCastPage(_currentCastPage);
-      else if(currentType==='staff') showStaffPage(_currentStaffPage);
-    } else {
-      showToast('⚠️ 同期に失敗しました');
-    }
+    // 成功・失敗問わず常に再描画（localStorageも含めて最新を表示）
+    if(currentType==='cast') showCastPage(_currentCastPage);
+    else if(currentType==='staff') showStaffPage(_currentStaffPage);
+    if(!ok) showToast('⚠️ サーバー同期に失敗。ローカルデータを表示しています');
   });
 }
 function reloadCurrentPage(){
@@ -1003,28 +1079,15 @@ function isConfirmed(name,ds){
   const wk=getWeekKey(ds);
   const s=S.submissions[name+'_'+wk];
   if(!s)return false;
-
-  // 確定済み・変更確定 → 全日ロック（changedDatesあり・change_unlockedへ移行済み）
-  if(s.status==='confirmed'||s.status==='change_confirmed'){
-    return true;
-  }
-  // 変更許可中 → changedDates の日だけ編集可、それ以外はロック
+  // 提出済み全ステータスをロック（waiting以降は全てロック）
+  // 変更可能（change_unlocked）のみキャストが再提出できる
   if(s.status==='change_unlocked'){
     if(s.changedDates&&s.changedDates.includes(ds))return false;
     return true;
   }
-  // 変更提出済み → 全日ロック（再提出後は再ロック）
-  if(s.status==='change_submitted'||s.status==='change_inputting'){
-    return true;
-  }
-  // inputting → チェックが1つでも入っていたらキャスト変更不可
-  if(s.status==='inputting'){
-    const stores=S.castStores[name]||[];
-    const items=[...new Set(['記録簿',...stores])];
-    const hasCheck=items.some(it=>{const cd=S.checkData[name+'_'+wk+'_'+ds+'_'+it];return cd&&cd.checked;});
-    if(hasCheck)return true;
-  }
-  return false;
+  const lockedStatuses=['waiting','inputting','confirmed',
+    'change_submitted','change_inputting','change_confirmed'];
+  return lockedStatuses.includes(s.status);
 }
 function isSubmitted(name,ds){return!!S.submissions[name+'_'+getWeekKey(ds)];}
 function tzMinKey(tz){
@@ -1080,9 +1143,8 @@ function renderCastTopBanner(){
     </div>`;
   }
   if(alts.length>0){
-    html+=`<div class="alert-recruit"><strong>⚠️ 出勤募集中です ⚠️</strong><br>${alts.map(a=>`・${a.label}（募集：${a.need}名）`).join('<br>')}</div>`;
   }
-  html+=`<div style="background:#fee2e2;border:1.5px solid #f87171;border-radius:8px;padding:10px 12px;margin-bottom:10px;font-size:13px;color:#991b1b;font-weight:700;line-height:1.8">⚠️ 今週・翌週分は、一度提出したシフトはご自身では変更・追加不可です。変更・追加をご希望の場合はLINEにてお知らせください。</div>`;
+  html+=`<div style="background:#fee2e2;border:1.5px solid #f87171;border-radius:8px;padding:10px 12px;margin-bottom:10px;font-size:13px;color:#991b1b;font-weight:700;line-height:1.8">⚠️ 一度提出ボタンを押したシフトはご自身では変更・追加不可です。変更・追加をご希望の場合はLINEにてお知らせください。</div>`;
   return html;
 }
 
@@ -1091,8 +1153,8 @@ function renderCal(){
   const first=new Date(calY,calM,1),last=new Date(calY,calM+1,0),today=new Date();
   let html=renderCastTopBanner();
 
-  const sOpts=TIME_OPTIONS.map(t=>`<option value="${t.value}">${t.label}</option>`).join('');
-  const eOpts=END_OPTIONS.map(t=>`<option value="${t.value}">${t.label}</option>`).join('');
+  const sOpts=TIME_OPTIONS.map(t=>`<option value="${t.value}" ${t.value===lastBulkStart?'selected':''}>${t.label}</option>`).join('');
+  const eOpts=END_OPTIONS.map(t=>`<option value="${t.value}" ${t.value===lastBulkEnd?'selected':''}>${t.label}</option>`).join('');  
 
   html+=`<div class="bulk-box">
     <h4>📋 曜日指定一括入力</h4>
@@ -1144,7 +1206,18 @@ function renderCal(){
     let cls='cal-cell'+(isToday?' today':'')+(conf?' locked':'')+(isSun?' sunday':'')+(isSat?' saturday':'')+(isHol&&!isSun?' holiday':'');
     let inner=`<div class="cal-date">${day}${isHol?`<span style="font-size:7px;color:#dc2626;margin-left:1px">祝</span>`:''}</div>${isClosed?'<div style="font-size:8px;color:#94a3b8;font-weight:600">休業</div>':''}`;
     if(sh&&sh.start!=null){
-      const tc='cal-shift-tag '+(conf?'confirmed':isSubmitted(name,ds)?'pending':'input');
+      // ステータスに応じてタグの色を変える
+      const wkTmp=getWeekKey(ds);
+      const subTmp=S.submissions[name+'_'+wkTmp];
+      let tc='cal-shift-tag ';
+      if(conf){tc+='confirmed';}
+      else if(subTmp){
+        const st=subTmp.status;
+        if(st==='inputting'||st==='change_inputting')tc+='inputting';
+        else if(st==='waiting'||st==='change_submitted')tc+='pending';
+        else if(st==='change_unlocked')tc+='unlocked';
+        else tc+='pending';
+      } else {tc+='input';}
       inner+=`<div class="${tc}">${fmtR(sh.start,sh.end)}</div>`;
       if(sh.memo)inner+=`<div class="cal-memo">📝${sh.memo}</div>`;
     }
@@ -1198,6 +1271,7 @@ function applyBulk(){
     S.shifts[name+'_'+ds].start=sv;S.shifts[name+'_'+ds].end=ev;cnt++;
   }
   if(cnt===0){openInfoModal('入力できる日がありませんでした（営業時間外・確定済みなど）');return;}
+  lastBulkStart=sv;lastBulkEnd=ev;
   saveState();openInfoModal(`${cnt}日分を一括入力しました`,renderCal);
 }
 function calNav(d){calM+=d;if(calM<0){calM=11;calY--;}if(calM>11){calM=0;calY++;}calChecked.clear();renderCal();}
@@ -1236,6 +1310,7 @@ function applyChecked(){
     if(!S.shifts[name+'_'+ds])S.shifts[name+'_'+ds]={};
     S.shifts[name+'_'+ds].start=sv;S.shifts[name+'_'+ds].end=ev;cnt++;
   });
+  lastBulkStart=sv;lastBulkEnd=ev;
   calChecked.clear();saveState();openInfoModal(`${cnt}日分を入力しました`,renderCal);
 }
 function clearCalChecks(){calChecked.clear();renderCal();}
@@ -1509,7 +1584,7 @@ function saveCalImage(){
 function openShiftModal(ds){
   const name=currentUser.name,sh=S.shifts[name+'_'+ds]||{},d=new Date(ds);
   const dow=DOWNAMES[(d.getDay()+6)%7],isHol=HOLIDAYS.includes(ds),alts=getAlerts(ds);
-  const alertHtml=alts.length?`<div class="notice-box" style="margin-bottom:8px">⚠️ <strong>出勤募集中：</strong>${alts.map(a=>`${a.label}（募集${a.need}名）`).join(' / ')}</div>`:'';
+  const alertHtml='';
   const bizOpts=getBizOptions(ds);
   if(bizOpts.closed){
     openInfoModal(`${ds.slice(5).replace('-','/')} は休業日です`);
@@ -1555,10 +1630,8 @@ function submitShifts(){
     const wk=getWeekKey(ds),sub=S.submissions[name+'_'+wk];
     if(!sub){normalWks.add(wk);}
     else if(sub.status==='confirmed'||sub.status==='change_confirmed'){continue;} // 確定済みはスキップ
-    else if(sub.status==='change_submitted'){blockedWks.add(wk);} // 変更提出済みは再提出不可
     else if(sub.status==='change_unlocked'){changeWks.add(wk);} // 変更許可中は変更再提出
-    else if(lockedWks.has(wk)){blockedWks.add(wk);} // 今週・翌週提出済みは再提出不可
-    else{normalWks.add(wk);}
+    else{blockedWks.add(wk);} // 提出済み全ステータスは再提出不可（週問わず）
   }
   if(normalWks.size===0&&changeWks.size===0){
     if(blockedWks.size>0){
@@ -1690,13 +1763,17 @@ function renderHistory(){
   const sMap=STATUS_LABEL;
   const bMap=STATUS_BADGE;
 
-  let html=`<div class="card"><div class="card-title"><span class="ct-icon ct-pink">📋</span>提出履歴</div>`;
+  let html=`<div class="card">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+      <div class="card-title" style="margin:0"><span class="ct-icon ct-pink">📋</span>提出履歴</div>
+      <button class="btn btn-outline btn-sm" onclick="syncAndReload()" style="font-size:11px;padding:4px 10px">🔄 最新データ取得</button>
+    </div>`;
 
   // ステータス説明カード
   html+=`<div style="background:#f8fafc;border:1px solid var(--border);border-radius:9px;padding:14px;margin-bottom:14px">
     <div style="font-size:13px;font-weight:700;color:var(--text);margin-bottom:10px">📌 ステータスの説明</div>
     <div style="background:#fee2e2;border:1.5px solid #f87171;border-radius:8px;padding:10px 12px;margin-bottom:12px;font-size:12px;color:#991b1b;font-weight:700;line-height:1.8">
-      ⚠️ 今週・翌週分は、一度提出したシフトはご自身では変更・追加不可です。変更・追加をご希望の場合はLINEにてお知らせください。
+      ⚠️ 一度提出ボタンを押したシフトはご自身では変更・追加不可です。変更・追加をご希望の場合はLINEにてお知らせください。
     </div>
     <div style="display:flex;flex-direction:column;gap:10px;font-size:13px">
       <div style="display:flex;align-items:flex-start;gap:10px">
@@ -1716,7 +1793,7 @@ function renderHistory(){
         <span style="color:var(--text2);line-height:1.7">内勤がシフト変更を許可しました。シフト入力画面から再提出してください。</span>
       </div>
       <div style="display:flex;align-items:flex-start;gap:10px">
-        <span class="badge badge-warning" style="flex-shrink:0;margin-top:2px;white-space:nowrap">変更入力待ち</span>
+        <span class="badge badge-danger" style="flex-shrink:0;margin-top:2px;white-space:nowrap">変更入力待ち</span>
         <span style="color:var(--text2);line-height:1.7">変更後のシフトを提出しました。内勤スタッフの確認をお待ちください。</span>
       </div>
       <div style="display:flex;align-items:flex-start;gap:10px">
@@ -1789,13 +1866,13 @@ function renderStatusList(){
   ];
 
   const statusDescList=[
-    {badge:'badge-warning',label:'入力待ち',desc:'提出完了。内勤が各媒体へ入力する前の状態です。'},
-    {badge:'badge-info',label:'内勤入力中',desc:'内勤が入力中。キャスト編集不可。全媒体完了後、確定になります。'},
+    {badge:'badge-warning',label:'入力待ち',desc:'提出完了。順次内勤が入力するのをお待ちください。2週間以内のシフトを提出したのに1日経過してもステータスが変わっていない等あればLINEにてお知らせください。'},
+    {badge:'badge-info',label:'内勤入力中',desc:'内勤が入力中です。全媒体入力完了後、確定ステータスへ変わります。'},
     {badge:'badge-success',label:'確定',desc:'全媒体への入力が完了しました。'},
-    {badge:'badge-purple',label:'変更可能',desc:'変更の希望はLINEにてお知らせください。内勤がシフト変更を許可すると変更可能ステータスに変わります。再提出完了後のご連絡は不要です。'},
-    {badge:'badge-danger',label:'変更入力待ち',desc:'変更シフトをキャストが再提出。内勤のチェック待ちです。'},
+    {badge:'badge-purple',label:'変更可能',desc:'内勤がシフト変更を許可しました。'},
+    {badge:'badge-danger',label:'変更入力待ち',desc:'変更後のシフトを提出しました。内勤スタッフの確認をお待ちください。'},
     {badge:'badge-info',label:'変更入力中',desc:'変更シフトを入力中。キャスト編集不可。全媒体完了後、変更確定になります。'},
-    {badge:'badge-success',label:'変更確定',desc:'変更後シフトが確定しました。'},
+    {badge:'badge-success',label:'変更確定',desc:'変更後のシフトが確定しました。'},
     {badge:'badge-danger',label:'未提出',desc:'まだシフトが提出されていません。'},
   ];
   let html=`<div class="card" style="margin-bottom:10px">
@@ -2562,16 +2639,17 @@ function confShiftIC(castName,wk){
   ,0);
 
   const allDone=totalChecks>0&&doneChecks===totalChecks;
-  // 変更フロー中（変更提出済み or 変更許可中）かどうか
-  const isChangeFlow=sub.status==='change_submitted'||sub.status==='change_unlocked';
+  // 変更フロー中かどうか（change_inputting も含む）
+  const isChangeFlow=['change_submitted','change_unlocked','change_inputting'].includes(sub.status);
 
   if(allDone){
-    // 全チェック完了
     sub.status=isChangeFlow?'change_confirmed':'confirmed';
   } else if(doneChecks>0){
-    sub.status='inputting';
+    // 一部チェック済み
+    sub.status=isChangeFlow?'change_inputting':'inputting';
   } else {
-    sub.status='inputting';
+    // チェックなし（更新ボタンだけ押した）
+    sub.status=isChangeFlow?'change_inputting':'inputting';
   }
   sub.confirmedBy=currentStaffName||'内勤';
   sub.confirmedAt=new Date().toLocaleString('ja-JP');
@@ -2610,15 +2688,20 @@ function confShiftIC(castName,wk){
   body.append('token','sakura2025shift');
   body.append('data',JSON.stringify(S));
   fetch(GAS_URL,{method:'POST',body})
-    .then(()=>{
+    .then(r=>r.json())
+    .then(result=>{
       hideSyncOverlay();
-      const statusLabel={confirmed:'確定済み',change_confirmed:'変更確定',inputting:'内勤入力中'}[sub.status]||sub.status;
-      openInfoModal(`🔄 更新しました<br><span style="font-size:12px;color:var(--text2)">${castName}：${statusLabel}（${doneChecks}/${totalChecks}チェック）</span>`, renderInputCheck);
+      const statusLabel={confirmed:'確定済み',change_confirmed:'変更確定',inputting:'内勤入力中',change_inputting:'変更入力中',change_confirmed:'変更確定'}[sub.status]||STATUS_LABEL[sub.status]||sub.status;
+      if(result&&result.error){
+        openInfoModal(`⚠️ GAS保存エラー：${result.error}<br>再度更新ボタンを押してください`, renderInputCheck);
+      } else {
+        openInfoModal(`✅ 更新・保存しました<br><span style="font-size:12px;color:var(--text2)">${castName}：${statusLabel}（${doneChecks}/${totalChecks}チェック）</span>`, renderInputCheck);
+      }
     })
-    .catch(()=>{
+    .catch(e=>{
       hideSyncOverlay();
-      const statusLabel={confirmed:'確定済み',change_confirmed:'変更確定',inputting:'内勤入力中'}[sub.status]||sub.status;
-      openInfoModal(`🔄 更新しました（オフライン）<br><span style="font-size:12px;color:var(--text2)">${castName}：${statusLabel}（${doneChecks}/${totalChecks}チェック）</span>`, renderInputCheck);
+      const statusLabel=STATUS_LABEL[sub.status]||sub.status;
+      openInfoModal(`⚠️ ネットワークエラー（ローカルのみ保存）<br><span style="font-size:12px;color:var(--text2)">${castName}：${statusLabel}</span><br><span style="font-size:11px;color:#dc2626">同期ボタンで再試行してください</span>`, renderInputCheck);
     });
 }
 
@@ -4016,7 +4099,7 @@ ${castUrl}
 ━━━━━━━━━━━━━━━
 📅 シフト提出ルール
 ・提出期限：毎週土曜17時まで（翌週月曜日〜日曜日のシフト）
-・カレンダーの日付にロックがかかっている場合は変更不可
+・一度提出ボタンを押したシフトはご自身では変更・追加不可
 ・変更・追加はLINEでお知らせください
 
 📝 基本的な使い方
@@ -4099,7 +4182,7 @@ function renderHowTo(){
       <div style="background:#fffbeb;border-radius:8px;padding:12px;margin-bottom:12px;font-size:12px;line-height:1.8">
         <div style="font-weight:700;color:#d97706;margin-bottom:6px">⚠️ 提出のルール</div>
         ・<b>提出期限：毎週土曜17時まで</b>（翌週分のシフト）<br>
-        ・カレンダーの日付にロックがかかっている場合は変更不可<br>
+        ・一度提出ボタンを押したシフトはご自身では変更・追加不可<br>
         ・変更・追加が必要な場合は<b>LINEで内勤にご連絡</b>ください<br>
         ・パスワードを3回間違えると1時間ログインできなくなります
       </div>
@@ -4107,12 +4190,12 @@ function renderHowTo(){
       <div style="background:#f0f9ff;border-radius:8px;padding:12px;margin-bottom:12px;font-size:12px;line-height:1.8">
         <div style="font-weight:700;color:#0284c7;margin-bottom:6px">📋 ステータスの見方（提出履歴）</div>
         <table style="width:100%;border-collapse:collapse;font-size:11px">
-          <tr><td style="padding:3px 6px"><span class="badge badge-warning">入力待ち</span></td><td style="padding:3px 6px;color:var(--text2)">内勤が各媒体へ入力前</td></tr>
-          <tr><td style="padding:3px 6px"><span class="badge badge-info">内勤入力中</span></td><td style="padding:3px 6px;color:var(--text2)">内勤が入力中</td></tr>
-          <tr><td style="padding:3px 6px"><span class="badge badge-success">確定</span></td><td style="padding:3px 6px;color:var(--text2)">全媒体への入力完了</td></tr>
-          <tr><td style="padding:3px 6px"><span class="badge badge-purple">変更可能</span></td><td style="padding:3px 6px;color:var(--text2)">内勤が変更を許可、再提出できます</td></tr>
-          <tr><td style="padding:3px 6px"><span class="badge badge-danger">変更入力待ち</span></td><td style="padding:3px 6px;color:var(--text2)">変更シフトを提出済み、確認待ち</td></tr>
-          <tr><td style="padding:3px 6px"><span class="badge badge-success">変更確定</span></td><td style="padding:3px 6px;color:var(--text2)">変更後のシフトが確定</td></tr>
+          <tr><td style="padding:3px 6px"><span class="badge badge-warning">入力待ち</span></td><td style="padding:3px 6px;color:var(--text2)">提出完了。順次内勤が入力するのをお待ちください</td></tr>
+          <tr><td style="padding:3px 6px"><span class="badge badge-info">内勤入力中</span></td><td style="padding:3px 6px;color:var(--text2)">内勤が入力中。全媒体完了後、確定になります</td></tr>
+          <tr><td style="padding:3px 6px"><span class="badge badge-success">確定</span></td><td style="padding:3px 6px;color:var(--text2)">全媒体への入力が完了しました</td></tr>
+          <tr><td style="padding:3px 6px"><span class="badge badge-purple">変更可能</span></td><td style="padding:3px 6px;color:var(--text2)">内勤がシフト変更を許可しました</td></tr>
+          <tr><td style="padding:3px 6px"><span class="badge badge-danger">変更入力待ち</span></td><td style="padding:3px 6px;color:var(--text2)">変更後のシフトを提出。内勤の確認待ちです</td></tr>
+          <tr><td style="padding:3px 6px"><span class="badge badge-success">変更確定</span></td><td style="padding:3px 6px;color:var(--text2)">変更後のシフトが確定しました</td></tr>
         </table>
       </div>
 

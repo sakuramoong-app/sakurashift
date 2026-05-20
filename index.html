@@ -517,7 +517,7 @@ const AVC=['av-0','av-1','av-2','av-3','av-4'];
 function avc(n){const i=(S.castList||[]).findIndex(u=>u.name===n);return AVC[i>=0?i%5:0];}
 
 // ===== STATE =====
-const GAS_URL='https://script.google.com/macros/s/AKfycbxO8CoQFnRB3HZ4I_Lw2LcaO0aldloa2iEARdUGxJ-Vh3xgLp0jdynQ1RdCjOueMHww/exec';
+const GAS_URL='https://script.google.com/macros/s/AKfycbwCs9ZQbqXBaYt5sZx4z8VPLaAh7zoizFLUdmIX6v5sAtbAA09dUJzSYpafOfZmUVNW/exec';
 let S=initState(); // 初期値（GASロード前）
 let gasLoaded=false;
 
@@ -592,6 +592,9 @@ async function loadFromGAS(){
 
       S=migratedGas;
       S.operationLog=localLog; // ログはlocalStorageから復元
+      // checkDataは圧縮保存されているのでそのまま使用
+      // 存在しないキーはデフォルト{checked:false}として扱う
+      if(!S.checkData)S.checkData={};
       try{localStorage.setItem('shiftSysV8',JSON.stringify(S));}catch(e){}
     }
     gasLoaded=true;
@@ -627,8 +630,24 @@ function initState(){
   };
 }
 function saveState(){
-  // operationLog は除外（データサイズ削減）
-  // localStorageにのみ保存
+  // 古いチェックデータを自動削除（14日より古いもの）
+  try{
+    const cutoff=new Date();
+    cutoff.setDate(cutoff.getDate()-14);
+    const cutoffStr=cutoff.toISOString().slice(0,10);
+    Object.keys(S.checkData||{}).forEach(k=>{
+      const parts=k.split('_');
+      if(parts.length>=3&&parts[2]<cutoffStr) delete S.checkData[k];
+    });
+    Object.keys(S.submissions||{}).forEach(subKey=>{
+      const sub=S.submissions[subKey];
+      if(sub&&sub.checkedDates){
+        Object.keys(sub.checkedDates).forEach(ds=>{
+          if(ds<cutoffStr) delete sub.checkedDates[ds];
+        });
+      }
+    });
+  }catch(e){}
   S._savedAt=Date.now();
   try{localStorage.setItem('shiftSysV8',JSON.stringify(S));}catch(e){}
 
@@ -639,6 +658,13 @@ function saveState(){
   delete gasData.noticeImage;
   delete gasData.personalNoticeImages;
   delete gasData.operationLog; // ログは除外
+
+  // checkData を圧縮: checked:false のエントリを除外（デフォルト値のため不要）
+  const compressedCheck={};
+  Object.entries(gasData.checkData||{}).forEach(([k,v])=>{
+    if(v&&v.checked===true)compressedCheck[k]=v;
+  });
+  gasData.checkData=compressedCheck;
 
   const dataStr=JSON.stringify(gasData);
   console.log('[saveState] size:', Math.round(dataStr.length/1024)+'KB');
@@ -858,23 +884,33 @@ function checkDataSize(){
   delete mainData.noticeImage; delete mainData.personalNoticeImages;
   delete mainData.operationLog;
 
+  // キャスト別に分割したサイズを計算
+  const castNames=(S.castList||[]).map(u=>u.name);
+  const compCheck={};
+  Object.entries(S.checkData||{}).forEach(([k,v])=>{if(v&&v.checked)compCheck[k]=v;});
+  // 最大のキャスト1人分のサイズ
+  let maxCastCheckKb=0;
+  castNames.forEach(name=>{
+    const castCheck=Object.fromEntries(Object.entries(compCheck).filter(([k])=>k.startsWith(name+'_')));
+    const castSub=Object.fromEntries(Object.entries(S.submissions||{}).filter(([k])=>k.startsWith(name+'_')));
+    const kb=Math.round((JSON.stringify(castCheck).length+JSON.stringify(castSub).length)/1024);
+    if(kb>maxCastCheckKb)maxCastCheckKb=kb;
+  });
   const sizes={
     main:    Math.round(JSON.stringify(mainData).length/1024),
     shifts:  Math.round(JSON.stringify({shifts:S.shifts||{}}).length/1024),
-    subs:    Math.round(JSON.stringify({submissions:S.submissions||{}}).length/1024),
-    checks:  Math.round(JSON.stringify({checkData:S.checkData||{},checkNotes:S.checkNotes||{}}).length/1024),
+    maxCast: maxCastCheckKb,
   };
-  const maxSize=Math.max(...Object.values(sizes));
+  const maxSize=Math.max(sizes.main,sizes.shifts,sizes.maxCast);
   const el=document.getElementById('dataSizeResult');
   if(el) el.innerHTML=`
     <div style="font-weight:700;color:${maxSize>limit?'#dc2626':'#059669'}">
-      ${maxSize>limit?'❌ いずれかのシートが超過':'✅ 全シートOK'}（上限目安${limit}KB/シート）
+      ${maxSize>limit?'❌ 超過あり':'✅ 全項目OK'}（上限目安${limit}KB/行）
     </div>
     <div style="margin-top:4px;font-size:11px;line-height:1.8">
       📋 設定データ：${sizes.main}KB<br>
       📅 シフト：${sizes.shifts}KB<br>
-      📤 提出履歴：${sizes.subs}KB<br>
-      ✅ チェックデータ：${sizes.checks}KB ${sizes.checks>limit?'❌':'✅'}<br>
+      👤 最大キャスト1人分（提出+チェック）：${sizes.maxCast}KB<br>
       📋 ログ：${Math.round(JSON.stringify(S.operationLog||[]).length/1024)}KB（GAS除外）
     </div>
   `;
@@ -883,7 +919,7 @@ function checkDataSize(){
 // 古いチェックデータ（4週間以上前）を削除
 function cleanOldCheckData(){
   const cutoff=new Date();
-  cutoff.setDate(cutoff.getDate()-28); // 28日前
+  cutoff.setDate(cutoff.getDate()-14); // 14日前（2週間）
   const cutoffStr=cutoff.toISOString().slice(0,10);
   let removed=0;
   Object.keys(S.checkData||{}).forEach(k=>{
@@ -2301,7 +2337,7 @@ function renderInputCheckBody(){
       // チェックセルを生成する関数
       function mkChkCell(it,itmIdx){
         const cdKey=u.name+'_'+icWeekKey+'_'+ds+'_'+it;
-        const cd=S.checkData[cdKey]||{checked:false,checkedBy:'',color:''};
+        const cd=S.checkData&&S.checkData[cdKey]?S.checkData[cdKey]:{checked:false,checkedBy:'',color:''};
         const chkColor=cd.checked&&cd.color?cd.color:null;
         const cellBg=cd.checked?(chkColor?chkColor+'15':'#f0fdf4'):'';
         const borderCol=cd.checked&&chkColor?`border-left:3px solid ${chkColor}!important;background:${chkColor}12!important`:'border-left:3px solid transparent!important';

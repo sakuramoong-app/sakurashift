@@ -2246,12 +2246,14 @@ function renderInputCheckBody(){
     return true;
   });
   const submittedCasts=castList.filter(u=>S.submissions[u.name+'_'+icWeekKey]);
+  console.log('[IC] icWeekKey:',icWeekKey,'castList:',castList.length,'submitted:',submittedCasts.length,'group:',icSelectedGroup);
+  console.log('[IC] submissions keys:',Object.keys(S.submissions||{}).slice(0,5));
   const icBodyEl=document.getElementById('icBody');
   if(!icBodyEl)return;
 
   let html='';
   if(!submittedCasts.length){
-    html=`<div class="card"><p style="color:var(--text2);font-size:12px;padding:6px 0">${q?`「${q}」に一致する提出者はいません`:'この週の提出者はいません'}</p></div>`;
+    html=`<div class="card"><p style="color:var(--text2);font-size:12px;padding:6px 0">${q?`「${q}」に一致する提出者はいません`:'この週の提出者はいません（週:${icWeekKey}）'}</p></div>`;
     icBodyEl.innerHTML=html;return;
   }
 

@@ -668,6 +668,7 @@ if(!S.castList){
   S.castList.forEach(u=>{if(!S.castStores[u.name])S.castStores[u.name]=[...STORES];});
 }
 if(!S.checkNotes)S.checkNotes={};
+if(!S.castFixedMemo)S.castFixedMemo={};
 if(!S.checkData)S.checkData={};
 if(!S.staffList)S.staffList=[{name:'店長A',color:'#ec4899'},{name:'副店長B',color:'#3b82f6'},{name:'内勤C',color:'#10b981'}];
 if(!S.staffPw)S.staffPw='0000'; else S.staffPw=String(S.staffPw).padStart(String(S.staffPw).length,'0');
@@ -1107,8 +1108,7 @@ function isConfirmed(name,ds){
   // 提出済み全ステータスをロック（waiting以降は全てロック）
   // 変更可能（change_unlocked）のみキャストが再提出できる
   if(s.status==='change_unlocked'){
-    if(s.changedDates&&s.changedDates.includes(ds))return false;
-    return true;
+    return false; // 週全体解除
   }
   const lockedStatuses=['waiting','inputting','confirmed',
     'change_submitted','change_inputting','change_confirmed'];
@@ -2207,14 +2207,25 @@ function renderInputCheckBody(){
           <span style="font-weight:800;font-size:15px">${u.name}</span>
           <span style="font-size:12px;color:var(--text2)">${getWeekLabel(icWeekKey)}</span>
           <span class="badge ${sBadge[sub.status]||'badge-gray'}">${sMap[sub.status]||sub.status}</span>
+          ${S.castFixedMemo&&S.castFixedMemo[u.name]?`<span style="font-size:10px;color:#0284c7;background:#e0f2fe;border-radius:10px;padding:1px 8px">📌 ${escHtml(S.castFixedMemo[u.name].slice(0,20))}${S.castFixedMemo[u.name].length>20?'...':''}</span>`:''}
         </div>
         <button class="btn btn-sm btn-primary" onclick="confShiftIC('${u.name}','${icWeekKey}')" title="更新">🔄 更新</button>
       </div>
       <div style="margin-bottom:10px">
-        <label style="font-size:12px;font-weight:700;color:var(--text2);display:block;margin-bottom:4px">📋 内勤メモ（${u.name}）</label>
-        <textarea style="width:100%;padding:8px 10px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;resize:vertical;min-height:52px;color:var(--text)"
-          placeholder="例：旅行に行くので出勤不可、など（内勤のみ閲覧可能）"
-          onchange="saveCastMemo('${u.name}',this.value)">${escHtml(castMemoVal)}</textarea>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <div style="flex:1;min-width:200px">
+            <label style="font-size:11px;font-weight:700;color:#0284c7;display:block;margin-bottom:3px">📌 固定メモ（全週共通）</label>
+            <textarea style="width:100%;padding:6px 10px;border:1.5px solid #7dd3fc;border-radius:8px;font-size:12px;resize:vertical;min-height:46px;color:var(--text);background:#f0f9ff"
+              placeholder="例：月曜定休、体調不良注意など（全週に表示）"
+              onchange="saveCastFixedMemo('${u.name}',this.value)">${escHtml(S.castFixedMemo&&S.castFixedMemo[u.name]?S.castFixedMemo[u.name]:'')}</textarea>
+          </div>
+          <div style="flex:1;min-width:200px">
+            <label style="font-size:11px;font-weight:700;color:var(--text2);display:block;margin-bottom:3px">📋 週メモ（この週のみ）</label>
+            <textarea style="width:100%;padding:6px 10px;border:1.5px solid var(--border);border-radius:8px;font-size:12px;resize:vertical;min-height:46px;color:var(--text)"
+              placeholder="例：旅行に行くので出勤不可、など"
+              onchange="saveCastMemo('${u.name}',this.value)">${escHtml(castMemoVal)}</textarea>
+          </div>
+        </div>
       </div>`;
 
     if(sub.status==='change_submitted')
@@ -2658,6 +2669,12 @@ if(!S.operationLog)S.operationLog=[];
   S.castMemo[castName]=val;
   saveState();
 }
+function saveCastFixedMemo(castName,val){
+  if(!S.castFixedMemo)S.castFixedMemo={};
+  S.castFixedMemo[castName]=val;
+  saveState();
+  addLog('内勤メモ(固定)更新','キャスト:'+castName);
+}
 function icSaveNote(noteKey,val){
   S.checkNotes[noteKey]=val;
   saveState();
@@ -2763,40 +2780,37 @@ function icRequestChange(castName,wk,ds){
   const k=castName+'_'+wk;
   if(!S.submissions[k])return;
   const sub=S.submissions[k];
-  // changedDates: 変更許可した日付リスト
-  if(!sub.changedDates)sub.changedDates=[];
-  if(sub.changedDates.includes(ds)){
-    // すでに変更許可中 → 再度押したら取り消し
-    sub.changedDates=sub.changedDates.filter(d=>d!==ds);
-    saveState();renderInputCheckBody();
-  } else {
-    openModal(`<div class="modal-title">🔄 シフト変更許可</div>
-      <p style="font-size:13px;color:var(--text2);margin-bottom:12px">${castName} さんの ${new Date(ds).getMonth()+1}/${new Date(ds).getDate()} のシフトを変更可能にします。<br>確定後、キャストはこの日のシフトを再提出できるようになります。</p>
-      <div class="modal-actions">
-        <button class="btn btn-outline" onclick="closeModal()">キャンセル</button>
-        <button class="btn btn-warning" onclick="closeModal();icDoRequestChange('${castName}','${wk}','${ds}')">変更を許可する</button>
-      </div>`);
-  }
+  openModal(`<div class="modal-title">🔄 シフト変更許可</div>
+    <p style="font-size:13px;color:var(--text2);margin-bottom:12px">
+      <b>${castName}</b> さん（${getWeekLabel(wk)}）の<br>
+      シフトを変更可能にします。<br><br>
+      キャストはこの週のシフトを再提出できるようになります。
+    </p>
+    <div class="modal-actions">
+      <button class="btn btn-outline" onclick="closeModal()">キャンセル</button>
+      <button class="btn btn-warning" onclick="closeModal();icDoRequestChange('${castName}','${wk}','${ds}')">🔓 変更を許可する</button>
+    </div>`);
 }
 
 function icDoRequestChange(castName,wk,ds){
   const k=castName+'_'+wk;
   if(!S.submissions[k])return;
   const sub=S.submissions[k];
-  if(!sub.changedDates)sub.changedDates=[];
-  if(!sub.changedDates.includes(ds))sub.changedDates.push(ds);
-  // その日のチェックデータをすべてクリア
+  // 週全体のチェックデータをクリア
   const stores=S.castStores[castName]||[];
   const items=[...new Set(['記録簿',...stores])];
-  items.forEach(it=>{
-    const cdKey=castName+'_'+wk+'_'+ds+'_'+it;
-    if(S.checkData[cdKey]){S.checkData[cdKey]={checked:false,checkedBy:'',color:''};}
+  getWeekDates(wk).forEach(d=>{
+    items.forEach(it=>{
+      const cdKey=castName+'_'+wk+'_'+d+'_'+it;
+      if(S.checkData[cdKey]){S.checkData[cdKey]={checked:false,checkedBy:'',color:''};}
+    });
   });
-  // ステータスを change_unlocked に（キャストが再編集・再提出できる）
+  // changedDatesを削除してシンプルに週全体解除
+  sub.changedDates=[];
   sub.status='change_unlocked';
-  addLog('change_unlock',castName,wk,`${ds} の変更許可`);
+  addLog('change_unlock',castName,wk,'週全体の変更許可');
   saveState();
-  openInfoModal(`🔓 ${castName} さん ${new Date(ds).getMonth()+1}/${new Date(ds).getDate()} の変更を許可しました。<br>キャストにシフト再提出を促してください。`,renderInputCheck);
+  openInfoModal(`🔓 ${castName} さん（${getWeekLabel(wk)}）の変更を許可しました。<br>キャストにシフト再提出を促してください。`,renderInputCheck);
 }
 
 // ===== HOURLY =====

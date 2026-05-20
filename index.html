@@ -577,43 +577,55 @@ function hideSyncOverlay(){
 async function loadFromGAS(){
   showSyncOverlay();
   try{
+    // まずlocalStorageのデータを取得
+    let localData=null;
+    try{
+      const ls=localStorage.getItem('shiftSysV8');
+      if(ls)localData=JSON.parse(ls);
+    }catch(e){}
+    const localShifts=Object.keys(localData&&localData.shifts||{}).length;
+    const localTime=localData&&localData._savedAt||0;
+
     const res=await fetch(GAS_URL+'?action=load&token=sakura2025shift');
     const json=await res.json();
+
     if(json.data&&json.data!=='{}'){
       const gasData=JSON.parse(json.data);
       const migratedGas=migrateState(gasData)||gasData;
-
-      // localStorageのデータを取得
-      let localData=null;
-      try{
-        const ls=localStorage.getItem('shiftSysV8');
-        if(ls)localData=JSON.parse(ls);
-      }catch(e){}
-
       const gasShifts=Object.keys(migratedGas.shifts||{}).length;
-      const localShifts=Object.keys(localData&&localData.shifts||{}).length;
       const gasTime=migratedGas._savedAt||0;
-      const localTime=localData&&localData._savedAt||0;
 
-      // GASのシフト件数がlocalより極端に少ない場合はlocalを優先
-      if(localData&&localShifts>gasShifts*2&&localTime>gasTime-3600000){
-        // localが明らかに多い→localを使い、GASに保存し直す
+      console.log('[loadFromGAS] local:'+localShifts+'件 gas:'+gasShifts+'件 localTime:'+new Date(localTime).toLocaleTimeString()+' gasTime:'+new Date(gasTime).toLocaleTimeString());
+
+      // localの方が新しい、またはシフト件数が多い場合はlocalを優先
+      const localIsNewer=localTime>gasTime;
+      const localHasMore=localShifts>gasShifts;
+
+      if(localData&&(localIsNewer||localHasMore)){
         S=migrateState(localData)||localData;
-        console.log('[loadFromGAS] local has more data, keeping local. local:'+localShifts+' gas:'+gasShifts);
-        showToast('⚠️ GASより新しいデータがあります。GASに再保存します...');
-        setTimeout(()=>saveState(),1000);
+        S.operationLog=localData.operationLog||[];
+        if(!S.checkData)S.checkData={};
+        console.log('[loadFromGAS] ローカル優先 (newer:'+localIsNewer+' more:'+localHasMore+')');
+        if(gasShifts<localShifts){
+          showToast('🔄 ローカルデータをGASに同期中...');
+          setTimeout(()=>saveState(),500);
+        }
       } else {
         S=migratedGas;
         S.operationLog=localData&&localData.operationLog||[];
         if(!S.checkData)S.checkData={};
-        console.log('[loadFromGAS] using GAS data. shifts:'+gasShifts);
+        console.log('[loadFromGAS] GAS優先 shifts:'+gasShifts);
       }
-      try{localStorage.setItem('shiftSysV8',JSON.stringify(S));}catch(e){}
     } else {
-      // GASが空→localStorageを使い続ける
-      console.log('[loadFromGAS] GAS empty, keeping local data');
-      showToast('⚠️ GASにデータがありません。ローカルデータを使用中');
+      // GASが空→localを絶対に守る
+      console.log('[loadFromGAS] GAS空 → ローカル保護');
+      if(localData){
+        S=migrateState(localData)||localData;
+        showToast('⚠️ GASが空です。ローカルデータを保護してGASに再保存します...');
+        setTimeout(()=>saveState(),500);
+      }
     }
+    try{localStorage.setItem('shiftSysV8',JSON.stringify(S));}catch(e){}
     gasLoaded=true;
     hideSyncOverlay();
     return true;
@@ -666,7 +678,11 @@ function saveState(){
     });
   }catch(e){}
   S._savedAt=Date.now();
-  try{localStorage.setItem('shiftSysV8',JSON.stringify(S));}catch(e){}
+  try{
+    const _j=JSON.stringify(S);
+    localStorage.setItem('shiftSysV8',_j);
+    localStorage.setItem('shiftSysV8_backup',_j); // 二重バックアップ
+  }catch(e){console.warn('localStorage error:',e);}
 
   if(!GAS_URL) return Promise.resolve(false);
 

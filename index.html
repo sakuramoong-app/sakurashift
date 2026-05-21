@@ -96,17 +96,17 @@ body{font-family:'Hiragino Kaku Gothic ProN','Meiryo',sans-serif;background:var(
 /* CALENDAR (cast) */
 .cal-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
 .cal-nav{display:flex;gap:5px;align-items:center}.cal-month-label{font-size:15px;font-weight:800}
-.cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:3px}
+.cal-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:3px}
 .cal-dow{text-align:center;font-size:10px;font-weight:700;color:var(--text2);padding:4px 0}
 .cal-dow:nth-child(7){color:#dc2626}.cal-dow:nth-child(6){color:#2563eb}
-.cal-cell{min-height:66px;border:1.5px solid var(--border);border-radius:6px;padding:3px;cursor:pointer;transition:all .2s;position:relative;background:#fff}
+.cal-cell{min-height:66px;border:1.5px solid var(--border);border-radius:6px;padding:3px;cursor:pointer;transition:all .2s;position:relative;background:#fff;overflow:hidden;min-width:0;word-break:break-all}
 .cal-cell:hover:not(.locked):not(.other-month){border-color:var(--pink);background:#fff5fb}
 .cal-cell.other-month{opacity:.3;cursor:default;background:#f8f9fb}
 .cal-cell.locked{background:#f8fafc;cursor:not-allowed;border-style:dashed;border-color:#cbd5e1}
 .cal-cell.today{border-color:var(--pink);border-width:2px;background:#fff5fb}
 .cal-date{font-size:10px;font-weight:700;color:var(--text2);margin-bottom:1px}
 .cal-cell.sunday .cal-date{color:#dc2626}.cal-cell.saturday .cal-date{color:#2563eb}.cal-cell.holiday .cal-date{color:#dc2626}
-.cal-shift-tag{border-radius:3px;padding:1px 3px;font-size:9px;line-height:1.5;margin-bottom:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600}
+.cal-shift-tag{border-radius:3px;padding:1px 3px;font-size:9px;line-height:1.5;margin-bottom:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600;max-width:100%;display:block}
 .cal-shift-tag.input{background:var(--navy);color:#fff}.cal-shift-tag.confirmed{background:#d1fae5;color:#065f46;border:1px solid #a7f3d0}.cal-shift-tag.pending{background:#fef3c7;color:#92400e}
 .cal-memo{font-size:8px;color:var(--text3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%;display:block}
 .cal-alert{position:absolute;top:2px;right:2px;font-size:8px;background:var(--danger);color:#fff;border-radius:3px;padding:1px 3px;font-weight:700}
@@ -273,7 +273,7 @@ tr.ic-row-lower td{border-bottom:2px solid #b0bec5!important}
 /* AV COLORS */
 .av-0{background:linear-gradient(135deg,#f472b6,#ec4899)}.av-1{background:linear-gradient(135deg,#60a5fa,#3b82f6)}.av-2{background:linear-gradient(135deg,#34d399,#10b981)}.av-3{background:linear-gradient(135deg,#fbbf24,#f59e0b)}.av-4{background:linear-gradient(135deg,#a78bfa,#7c3aed)}
 
-@media(max-width:600px){.content{padding:8px}.form-row{grid-template-columns:1fr}.cal-cell{min-height:52px}.stat-grid{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:600px){.content{padding:8px}.form-row{grid-template-columns:1fr}.cal-cell{min-height:52px;padding:2px;overflow:hidden}.cal-shift-tag{font-size:8px}.cal-memo{font-size:7px}.stat-grid{grid-template-columns:repeat(2,1fr)}}
 
 /* ===== 印刷スタイル ===== */
 @media print {

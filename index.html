@@ -1050,8 +1050,17 @@ async function doLogin(){
     // 下の名前（部分一致）でマッチング
     const u=S.castList.find(x=>x.name===name&&String(x.pw)===String(pw))||S.castList.find(x=>x.name.endsWith(name)&&String(x.pw)===String(pw));
     // 名前が一致するキャストを特定（PW確認前にロックチェック）
-    const castByName=S.castList.find(x=>x.name===name)||S.castList.find(x=>x.name.endsWith(name)); // PW比較はString()で統一済み
+    const castByName=S.castList.find(x=>x.name===name)||S.castList.find(x=>x.name.endsWith(name));
     const lockKey=castByName?'cast_'+castByName.name:'cast_'+name;
+    const castName=castByName?castByName.name:name;
+
+    // GASで内勤がロック解除していたらlocalStorageのロックをクリア
+    if(S.castLocks&&S.castLocks[castName]&&S.castLocks[castName].unlockedByStaff){
+      clearLock(lockKey);
+      delete S.castLocks[castName];
+      saveState();
+    }
+
     const lockStatus=checkLocked(lockKey);
     if(lockStatus&&lockStatus.locked){
       err.textContent=`⛔ ロック中です。あと約${lockStatus.remain}分お待ちください。`;

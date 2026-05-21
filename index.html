@@ -729,6 +729,7 @@ if(!S.castList){
 }
 if(!S.checkNotes)S.checkNotes={};
 if(!S.castFixedMemo)S.castFixedMemo={};
+if(!S.castLocks)S.castLocks={};
 if(!S.checkData)S.checkData={};
 if(!S.staffList)S.staffList=[{name:'店長A',color:'#ec4899'},{name:'副店長B',color:'#3b82f6'},{name:'内勤C',color:'#10b981'}];
 if(!S.staffPw)S.staffPw='0000'; else S.staffPw=String(S.staffPw).padStart(String(S.staffPw).length,'0');
@@ -1014,6 +1015,13 @@ function recordFailure(key){
   if(f[key].count>=3){
     f[key].lockedUntil=Date.now()+60*60*1000; // 1時間
     f[key].count=0;
+    // GASにもロック情報を記録（内勤が解除できるよう）
+    if(key.startsWith('cast_')){
+      const castName=key.slice(5);
+      if(!S.castLocks)S.castLocks={};
+      S.castLocks[castName]={lockedAt:Date.now(),lockedUntil:Date.now()+60*60*1000};
+      saveState();
+    }
   }
   saveLoginFailures(f);
   return f[key];
@@ -2821,6 +2829,7 @@ if(!S.operationLog)S.operationLog=[];
 }
 function saveCastFixedMemo(castName,val){
   if(!S.castFixedMemo)S.castFixedMemo={};
+if(!S.castLocks)S.castLocks={};
   S.castFixedMemo[castName]=val;
   saveState();
   addLog('内勤メモ(固定)更新','キャスト:'+castName);
@@ -3202,7 +3211,10 @@ function renderSettings(){
       <input type="text" placeholder="②18名" value="${escHtml(mn.juhachi||'')}"
         style="width:80px;font-size:11px;padding:3px 6px;border:1.5px solid #93c5fd;border-radius:5px;color:#2563eb"
         onchange="saveCastMediaName('${u.name}','juhachi',this.value)">
-      ${(()=>{const ls=checkLocked('cast_'+u.name);return ls&&ls.locked?`<button class="btn btn-warning btn-sm" onclick="unlockCast('${u.name}')">🔓 解除</button>`:'';})()} 
+      ${(()=>{
+        const gasLocked=S.castLocks&&S.castLocks[u.name]&&!S.castLocks[u.name].unlockedByStaff;
+        return gasLocked?`<button class="btn btn-warning btn-sm" onclick="unlockCastByStaff('${u.name}')">🔓 ロック解除</button><span style="font-size:10px;color:#dc2626;margin-left:4px">🔒ロック中</span>`:'';
+      })()}
       <button class="btn btn-danger btn-sm" onclick="removeCast('${u.name}')">削除</button>
     </div>`;
   });
@@ -3438,6 +3450,14 @@ function addCast(){
 function unlockCast(name){
   clearLock('cast_'+name);
   openInfoModal(`🔓 ${name} のロックを解除しました`,renderSettings);
+}
+function unlockCastByStaff(name){
+  if(!S.castLocks)S.castLocks={};
+  // unlockedByStaffフラグを立てる→キャスト次回ログイン時にlocalStorageのロックを解除
+  S.castLocks[name]={...S.castLocks[name],unlockedByStaff:true,unlockedAt:Date.now()};
+  saveState().then(()=>{
+    openInfoModal(`🔓 ${name} のロックを解除しました。\nキャストが次回ログインすると反映されます。`,renderSettings);
+  });
 }
 function removeCast(name){
   openConfirmModal(`「${name}」を削除しますか？\n（シフトデータも削除されます）`,()=>{

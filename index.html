@@ -1689,8 +1689,19 @@ function openLockedModal(ds){
   const isHol=HOLIDAYS.includes(ds);
   const wk=getWeekKey(ds);
   const sub=S.submissions[name+'_'+wk];
-  const statusLabel=sub?STATUS_LABEL[sub.status]||sub.status:'';
-  const badgeClass=sub?STATUS_BADGE[sub.status]||'badge-gray':'';
+
+  // この日付の実際のステータスを判定
+  // change_unlocked でも changedDates に含まれない日は元のステータス扱い
+  let displayStatus=sub?sub.status:'';
+  if(sub&&sub.status==='change_unlocked'){
+    const inChangedDates=sub.changedDates&&sub.changedDates.includes(ds);
+    if(!inChangedDates){
+      // 変更許可されていない日→直前のステータスを推定（confirmed相当）
+      displayStatus='confirmed';
+    }
+  }
+  const statusLabel=displayStatus?STATUS_LABEL[displayStatus]||displayStatus:'';
+  const badgeClass=displayStatus?STATUS_BADGE[displayStatus]||'badge-gray':'';
 
   openModal(`<button class="modal-close" onclick="closeModal()">×</button>
     <div class="modal-title">📅 ${d.getMonth()+1}/${d.getDate()}(${dow}${isHol?'祝':''})</div>
@@ -2410,12 +2421,17 @@ function renderInputCheckBody(){
 
       // 行ステータス判定
       let rowClass='',dayBadge='',dayBadgeCls='';
-      if(isChangedDay){
+      if(isChangedDay&&(sub.status==='change_submitted'||sub.status==='change_inputting')){
+        // 変更許可した日でかつ再提出済み→変更提出済み
+        rowClass='ic-row-change-wait';
+        dayBadge='変更入力待ち';dayBadgeCls='day-badge-change-wait';
+      } else if(isChangedDay&&sub.status==='change_unlocked'){
+        // 変更許可した日でまだ再提出されていない
         rowClass='ic-row-change-unlock';
         dayBadge='変更許可中';dayBadgeCls='day-badge-change-unlock';
       } else if(sub.status==='change_submitted'&&sh&&sh.start!=null){
         rowClass='ic-row-change-wait';
-        dayBadge='変更提出済み';dayBadgeCls='day-badge-change-wait';
+        dayBadge='変更入力待ち';dayBadgeCls='day-badge-change-wait';
       } else if(dayDone&&sh&&sh.start!=null){
         rowClass='ic-row-all-done';
         dayBadge='全チェック済み';dayBadgeCls='day-badge-done';

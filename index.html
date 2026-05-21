@@ -3213,7 +3213,7 @@ function renderSettings(){
         onchange="saveCastMediaName('${u.name}','juhachi',this.value)">
       ${(()=>{
         const gasLocked=S.castLocks&&S.castLocks[u.name]&&!S.castLocks[u.name].unlockedByStaff;
-        return gasLocked?`<button class="btn btn-warning btn-sm" onclick="unlockCastByStaff('${u.name}')">🔓 ロック解除</button><span style="font-size:10px;color:#dc2626;margin-left:4px">🔒ロック中</span>`:'';
+        return gasLocked?`<span style="margin-left:12px"><button style="padding:4px 12px;font-size:11px;font-weight:700;background:#dc2626;color:#fff;border:none;border-radius:6px;cursor:pointer;box-shadow:0 2px 6px rgba(220,38,38,.4)" onclick="unlockCastByStaff('${u.name}')">🔓 ロック解除</button></span>`:'';
       })()}
       <button class="btn btn-danger btn-sm" onclick="removeCast('${u.name}')">削除</button>
     </div>`;

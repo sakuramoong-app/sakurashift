@@ -1679,6 +1679,40 @@ function saveCalImage(){
   }// block close
 }
 
+
+function openLockedModal(ds){
+  const name=currentUser.name;
+  const sh=S.shifts[name+'_'+ds]||{};
+  const d=new Date(ds);
+  const dow=DOWNAMES[(d.getDay()+6)%7];
+  const isHol=HOLIDAYS.includes(ds);
+  const wk=getWeekKey(ds);
+  const sub=S.submissions[name+'_'+wk];
+  const statusLabel=sub?STATUS_LABEL[sub.status]||sub.status:'';
+  const badgeClass=sub?STATUS_BADGE[sub.status]||'badge-gray':'';
+
+  openModal(`<button class="modal-close" onclick="closeModal()">×</button>
+    <div class="modal-title">📅 ${d.getMonth()+1}/${d.getDate()}(${dow}${isHol?'祝':''})</div>
+    <div style="background:#f8fafc;border-radius:8px;padding:10px 12px;margin-bottom:12px">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+        <span style="font-size:12px;color:#94a3b8">🔒 ロック中</span>
+        ${sub?`<span class="badge ${badgeClass}">${statusLabel}</span>`:''}
+      </div>
+      ${sh.start!=null
+        ?`<div style="font-size:22px;font-weight:800;color:var(--navy);margin-bottom:6px">⌚ ${fmtR(sh.start,sh.end)}</div>
+          ${sh.memo?`<div style="font-size:13px;color:#475569;background:#fff;border-radius:6px;padding:8px 10px;border:1px solid var(--border)">
+            <div style="font-size:10px;color:#94a3b8;margin-bottom:3px">📝 メモ（内勤へ）</div>
+            ${escHtml(sh.memo)}
+          </div>`:'<div style="font-size:12px;color:#94a3b8">メモなし</div>'}
+        `
+        :`<div style="font-size:14px;color:#94a3b8">シフト未入力</div>`
+      }
+    </div>
+    <div style="font-size:11px;color:#94a3b8;text-align:center;margin-bottom:8px">変更・追加はLINEにてお知らせください</div>
+    <div class="modal-actions">
+      <button class="btn btn-outline" onclick="closeModal()">閉じる</button>
+    </div>`);
+}
 function openShiftModal(ds){
   const name=currentUser.name,sh=S.shifts[name+'_'+ds]||{},d=new Date(ds);
   const dow=DOWNAMES[(d.getDay()+6)%7],isHol=HOLIDAYS.includes(ds),alts=getAlerts(ds);
@@ -1690,6 +1724,13 @@ function openShiftModal(ds){
   }
   const sOpts=bizOpts.sOpts.map(t=>`<option value="${t.value}"${sh.start===t.value?' selected':''}>${t.label}</option>`).join('');
   const eOpts=bizOpts.eOpts.map(t=>`<option value="${t.value}"${sh.end===t.value?' selected':''}>${t.label}</option>`).join('');
+  // 募集情報HTML
+  const altsHtml=alts.length?`<div style="background:#fff7ed;border:1px solid #fed7aa;border-radius:8px;padding:8px 10px;margin-bottom:10px;font-size:12px">
+    <div style="font-weight:700;color:#c2410c;margin-bottom:4px">📢 出勤募集中</div>
+    ${alts.map(a=>`<div style="display:flex;justify-content:space-between;padding:2px 0;color:#9a3412">
+      <span>${a.label}</span><span>あと <b>${a.need}</b> 人</span>
+    </div>`).join('')}
+  </div>`:'';
   openModal(`<button class="modal-close" onclick="closeModal()">×</button>
     <div class="modal-title">📅 ${d.getMonth()+1}/${d.getDate()}(${dow}${isHol?'祝':''}) シフト入力</div>
     ${alertHtml}
@@ -1697,6 +1738,7 @@ function openShiftModal(ds){
       <div><label class="form-label">出勤</label><select class="form-select" id="mS">${sOpts}</select></div>
       <div><label class="form-label">退勤</label><select class="form-select" id="mE">${eOpts}</select></div>
     </div>
+    ${altsHtml}
     <div style="margin-bottom:10px"><label class="form-label">メモ（内勤へ伝達）</label><textarea class="form-textarea" id="mM">${sh.memo||''}</textarea></div>
     <div class="modal-actions">
       ${sh.start!=null?`<button class="btn btn-danger btn-sm" onclick="delShift('${ds}')">削除</button>`:''}

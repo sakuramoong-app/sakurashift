@@ -1325,7 +1325,8 @@ function renderCal(){
       const chked=calChecked.has(ds);
       inner+=`<input type="checkbox" class="cal-check" ${chked?'checked':''} onclick="event.stopPropagation();toggleCalCheck('${ds}')" style="position:absolute;bottom:2px;right:2px;width:12px;height:12px;accent-color:var(--pink2);cursor:pointer">`;
     }
-    html+=`<div class="${cls}"${conf||isClosed?'':` onclick="openShiftModal('${ds}')"`} style="${isClosed?'opacity:.4;cursor:default;':''}">${inner}</div>`;
+    const cellClick=isClosed?'':(conf?`onclick="openLockedModal('${ds}')"`:` onclick="openShiftModal('${ds}')"`);
+    html+=`<div class="${cls}" ${cellClick} style="${isClosed?'opacity:.4;cursor:default;':''}">${inner}</div>`;
   }
   const endDow=(last.getDay()+6)%7;
   for(let i=endDow+1;i<7;i++){const d=new Date(calY,calM+1,i-endDow,12,0,0);html+=`<div class="cal-cell other-month"><div class="cal-date">${d.getDate()}</div></div>`;}

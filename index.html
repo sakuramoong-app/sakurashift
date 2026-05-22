@@ -2876,13 +2876,14 @@ function confShiftIC(castName,wk){
         if(S.checkData[cdKey])S.checkData[cdKey]={checked:false,checkedBy:'',color:''};
       });
     });
-    // 既存のchangedDatesに追加（上書きしない）
     const existing=sub.changedDates||[];
     sub.changedDates=[...new Set([...existing,...dates])];
     sub.status='change_unlocked';
     delete _pendingChanges[pk];
     addLog('change_unlock',castName,wk,dates.join(','));
+    showSyncOverlay();
     saveState(false).then(()=>{
+      hideSyncOverlay();
       const labels=dates.map(d=>{const dt=new Date(d);return (dt.getMonth()+1)+'/'+(dt.getDate());}).join('・');
       openInfoModal(`🔓 ${castName}さん（${labels}）の変更を許可しました。キャストにシフト再提出を促してください。`,renderInputCheck);
     });

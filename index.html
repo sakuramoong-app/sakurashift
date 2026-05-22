@@ -741,6 +741,7 @@ let calY=new Date().getFullYear(),calM=new Date().getMonth();
 let calChecked=new Set();
 let lastBulkStart=12,lastBulkEnd=13; // 最後に使った一括時刻
 let icSearchQuery='';
+let _icJumping=false; // ジャンプ時のリセット防止フラグ
 let slWeekKey=''; // ステータス一覧の選択週
 let slFilter='all'; // ステータスフィルター
 let icWeekKey='';
@@ -1997,7 +1998,7 @@ function showStaffPage(p){
   _currentStaffPage=p;
   const _fh=document.getElementById('icFixedHeader');
   if(_fh&&p!=='inputcheck')_fh.style.display='none';
-  if(p==='inputcheck'){icGroupMode=true;icSearchQuery='';}
+  if(p==='inputcheck'&&!_icJumping){icGroupMode=true;icSearchQuery='';}
   const pages=['statuslist','inputcheck','hourly','settings','notice','logs','staffcal','castinfo','howto'];
   document.querySelectorAll('#staffTabs .page-tab').forEach((el,i)=>el.classList.toggle('active',pages[i]===p));
   try{
@@ -2141,7 +2142,9 @@ function jumpToInputCheck(castName,wk){
   icGroupMode=false;
   icSearchQuery=castName;
   icWeekKey=wk;
+  _icJumping=true; // showStaffPageのリセットを防ぐフラグ
   showStaffPage('inputcheck');
+  _icJumping=false;
 }
 
 function toggleReminded(castName,wk,checked){

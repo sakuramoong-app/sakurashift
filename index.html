@@ -2135,8 +2135,9 @@ function renderStatusList(){
 }
 
 function jumpToInputCheck(castName,wk){
-  // 入力チェックタブに移動して対象キャスト・週を表示
-  icSelectedGroup='すべて';
+  // キャストのグループを自動検出
+  const group=getGroupForName(castName);
+  icSelectedGroup=group||'すべて';
   icGroupMode=false;
   icSearchQuery=castName;
   icWeekKey=wk;
@@ -4520,6 +4521,7 @@ function renderHowTo(){
       <div style="background:#faf5ff;border-radius:8px;padding:12px;margin-bottom:12px;font-size:12px;line-height:1.8">
         <div style="font-weight:700;color:#7c3aed;margin-bottom:6px">⚙️ マスタ設定</div>
         ・<b>キャスト管理</b>：キャストの追加・削除・PW確認・極門名・18名の登録<br>
+        ・<b>キャストのログインロック解除</b>：キャストが3回ログインを失敗すると1時間ロックされます。キャスト管理の中に🔓ロック解除ボタンが赤く表示されるので押してください。キャストが次回ログイン時に自動で解除されます。<br>
         ・<b>基本シフトテンプレート</b>：キャストの曜日別基本シフトを登録<br>
         ・<b>キャスト在籍店舗設定</b>：どのキャストがどの媒体に在籍しているか<br>
         ・<b>時間帯別最低人数</b>：時間帯ごとの最低在籍人数アラート設定<br>

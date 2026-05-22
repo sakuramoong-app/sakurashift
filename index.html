@@ -659,7 +659,7 @@ function initState(){
     staffPw:'0000' // 内勤共通パスワード
   };
 }
-function saveState(){
+function saveState(showOverlay=true){
   // 古いチェックデータを自動削除（14日より古いもの）
   try{
     const cutoff=new Date();
@@ -686,6 +686,7 @@ function saveState(){
   }catch(e){console.warn('localStorage error:',e);}
 
   if(!GAS_URL) return Promise.resolve(false);
+  if(showOverlay) showSyncOverlay();
 
   // GASに送るデータを構築（画像・ログを除外）
   const gasData={...S};
@@ -710,6 +711,7 @@ function saveState(){
   return fetch(GAS_URL,{method:'POST',body})
     .then(r=>r.json())
     .then(result=>{
+      if(showOverlay) hideSyncOverlay();
       if(result&&result.error){
         console.warn('GAS save error:',result.error);
         showToast('⚠️ GAS保存エラー: '+result.error);
@@ -718,7 +720,11 @@ function saveState(){
       console.log('[saveState] GAS saved OK');
       return true;
     })
-    .catch(e=>{console.warn('GAS save failed',e);return false;});
+    .catch(e=>{
+      if(showOverlay) hideSyncOverlay();
+      console.warn('GAS save failed',e);
+      return false;
+    });
 }
 
 // Migration: ensure new fields
@@ -2876,7 +2882,7 @@ function confShiftIC(castName,wk){
     sub.status='change_unlocked';
     delete _pendingChanges[pk];
     addLog('change_unlock',castName,wk,dates.join(','));
-    saveState().then(()=>{
+    saveState(false).then(()=>{
       const labels=dates.map(d=>{const dt=new Date(d);return (dt.getMonth()+1)+'/'+(dt.getDate());}).join('・');
       openInfoModal(`🔓 ${castName}さん（${labels}）の変更を許可しました。キャストにシフト再提出を促してください。`,renderInputCheck);
     });
@@ -3006,7 +3012,7 @@ function icDoRequestChange(castName,wk,ds){
   sub.changedDates=[];
   sub.status='change_unlocked';
   addLog('change_unlock',castName,wk,'週全体の変更許可');
-  saveState();
+  saveState(false);
   openInfoModal(`🔓 ${castName} さん（${getWeekLabel(wk)}）の変更を許可しました。<br>キャストにシフト再提出を促してください。`,renderInputCheck);
 }
 
@@ -3449,7 +3455,7 @@ function addCast(){
   // フォームを即クリア（ポップアップ表示前）
   if(nameEl)nameEl.value='';
   if(pwEl)pwEl.value='';
-  saveState();renderSettings();
+  saveState(false);renderSettings();
   // ポップアップ表示（OKボタンにautofocus → Enterで閉じられる）
   openModal(`<div class="modal-title">✅ ${name} を追加しました</div>
     <div style="text-align:center;margin:12px 0">
@@ -3469,7 +3475,7 @@ function unlockCastByStaff(name){
   if(!S.castLocks)S.castLocks={};
   // unlockedByStaffフラグを立てる→キャスト次回ログイン時にlocalStorageのロックを解除
   S.castLocks[name]={...S.castLocks[name],unlockedByStaff:true,unlockedAt:Date.now()};
-  saveState().then(()=>{
+  saveState(false).then(()=>{
     openInfoModal(`🔓 ${name} のロックを解除しました。\nキャストが次回ログインすると反映されます。`,renderSettings);
   });
 }
@@ -3479,7 +3485,7 @@ function removeCast(name){
     delete S.castStores[name];
     Object.keys(S.shifts).forEach(k=>{if(k.startsWith(name+'_'))delete S.shifts[k];});
     Object.keys(S.submissions).forEach(k=>{if(k.startsWith(name+'_'))delete S.submissions[k];});
-    saveState();renderSettings();
+    saveState(false);renderSettings();
   });
 }
 
@@ -3487,18 +3493,18 @@ function removeCast(name){
 function setBizWeekly(dow,type,val){
   if(!S.businessHours.weekly[dow])S.businessHours.weekly[dow]={open:12,close:29};
   S.businessHours.weekly[dow][type]=parseInt(val);
-  saveState();
+  saveState(false);
 }
 function addClosedDay(){
   const d=document.getElementById('closedDateInput').value;
   if(!d)return;
   if(!S.businessHours.closed)S.businessHours.closed=[];
-  if(!S.businessHours.closed.includes(d)){S.businessHours.closed.push(d);saveState();}
+  if(!S.businessHours.closed.includes(d)){S.businessHours.closed.push(d);saveState(false);}
   renderSettings();
 }
 function removeClosedDay(d){
   S.businessHours.closed=(S.businessHours.closed||[]).filter(x=>x!==d);
-  saveState();renderSettings();
+  saveState(false);renderSettings();
 }
 function addSpecialDay(){
   const d=document.getElementById('specialDateInput').value;
@@ -3507,11 +3513,11 @@ function addSpecialDay(){
   if(!d||open>=close)return openInfoModal('日付と時間を正しく入力してください');
   if(!S.businessHours.special)S.businessHours.special={};
   S.businessHours.special[d]={open,close};
-  saveState();renderSettings();
+  saveState(false);renderSettings();
 }
 function removeSpecialDay(d){
   delete S.businessHours.special[d];
-  saveState();renderSettings();
+  saveState(false);renderSettings();
 }
 function toggleAccordionById(bodyId,arrowId){
   const body=document.getElementById(bodyId);
@@ -3534,7 +3540,7 @@ function togStore(n,s){
   if(!S.castStores[n])S.castStores[n]=[];
   const a=S.castStores[n],i=a.indexOf(s);
   if(i>=0)a.splice(i,1);else a.push(s);
-  saveState();
+  saveState(false);
   // 全画面再描画せず、該当キャストのチップだけ更新
   const accEl=document.querySelector('.accordion-body[data-cast-name="'+n+'"]');
   const chipsEl=accEl?accEl.querySelector('.store-chips'):null;
@@ -3547,32 +3553,32 @@ function togStore(n,s){
     renderSettings(); // フォールバック
   }
 }
-function setMin(h,v){S.minPeople[h]=parseInt(v)||0;saveState();}
+function setMin(h,v){S.minPeople[h]=parseInt(v)||0;saveState(false);}
 
 // 内勤スタッフ管理
 function addStaff(){
   const name=document.getElementById('newStaffName').value.trim();
   const color=document.getElementById('newStaffColor').value;
   if(!name){openInfoModal('スタッフ名を入力してください');return;}
-  S.staffList.push({name,color});saveState();renderSettings();
+  S.staffList.push({name,color});saveState(false);renderSettings();
 }
 function removeStaff(i){
-  openConfirmModal(`「${S.staffList[i].name}」を削除しますか？`,()=>{S.staffList.splice(i,1);saveState();renderSettings();});
+  openConfirmModal(`「${S.staffList[i].name}」を削除しますか？`,()=>{S.staffList.splice(i,1);saveState(false);renderSettings();});
 }
-function updateStaffName(i,v){S.staffList[i].name=v;saveState();}
-function updateStaffColor(i,v){S.staffList[i].color=v;saveState();}
+function updateStaffName(i,v){S.staffList[i].name=v;saveState(false);}
+function updateStaffColor(i,v){S.staffList[i].color=v;saveState(false);}
 function saveAllSettings(){
   // 内勤PW
   const pwEl=document.getElementById('staffPwInput');
   if(pwEl&&pwEl.value.trim()) S.staffPw=String(pwEl.value.trim());
-  saveState();
+  saveState(false);
   openInfoModal('✅ マスタ設定を保存しました');
 }
 
 function saveStaffPw(){
   const v=String((document.getElementById('staffPwInput').value||'').trim());
   if(!v){openInfoModal('パスワードを入力してください');return;}
-  S.staffPw=v;saveState();openInfoModal('パスワードを保存しました');
+  S.staffPw=v;saveState(false);openInfoModal('パスワードを保存しました');
 }
 
 // ===== NOTICE =====
@@ -3730,12 +3736,12 @@ function saveNotice(){
     setNoticeImage('global',window._pendingNoticeImage);
     window._pendingNoticeImage=null;
   }
-  saveState();openInfoModal('全体お知らせを保存しました！',renderNoticeAdmin);
+  saveState(false);openInfoModal('全体お知らせを保存しました！',renderNoticeAdmin);
 }
 function clearNotice(){
   openConfirmModal('全体お知らせをクリアしますか？',()=>{
     S.notices='';setNoticeImage('global',null);
-    saveState();renderNoticeAdmin();
+    saveState(false);renderNoticeAdmin();
   });
 }
 function savePersonalNoticeBulk(){
@@ -3749,7 +3755,7 @@ function savePersonalNoticeBulk(){
     if(window._pendingPersonalImage) setNoticeImage('personal_'+name,window._pendingPersonalImage);
   });
   window._pendingPersonalImage=null;
-  saveState();
+  saveState(false);
   openInfoModal(`✅ ${targets.join('・')} へのお知らせを送信しました！`,renderNoticeAdmin);
 }
 function clearSelectedPersonalNotices(){
@@ -3760,14 +3766,14 @@ function clearSelectedPersonalNotices(){
       if(S.personalNotices)delete S.personalNotices[name];
       setNoticeImage('personal_'+name,null);
     });
-    saveState();renderNoticeAdmin();
+    saveState(false);renderNoticeAdmin();
   });
 }
 function clearPersonalNotice(name){
   openConfirmModal(`${name}さんへのお知らせをクリアしますか？`,()=>{
     if(S.personalNotices)delete S.personalNotices[name];
     setNoticeImage('personal_'+name,null);
-    saveState();renderNoticeAdmin();
+    saveState(false);renderNoticeAdmin();
   });
 }
 
@@ -3782,7 +3788,7 @@ function resetCastShift(){
   const name=getResetCastName();if(!name)return;
   openConfirmModal(`「${name}」のシフト入力をクリアしますか？`,()=>{
     Object.keys(S.shifts).forEach(k=>{if(k.startsWith(name+'_'))delete S.shifts[k];});
-    saveState();openInfoModal(`✅ ${name}のシフト入力をクリアしました`,renderSettings);
+    saveState(false);openInfoModal(`✅ ${name}のシフト入力をクリアしました`,renderSettings);
   });
 }
 function resetCastSubmission(){
@@ -3791,7 +3797,7 @@ function resetCastSubmission(){
     Object.keys(S.submissions).forEach(k=>{if(k.startsWith(name+'_'))delete S.submissions[k];});
     Object.keys(S.checkData).forEach(k=>{if(k.startsWith(name+'_'))delete S.checkData[k];});
     Object.keys(S.checkNotes).forEach(k=>{if(k.startsWith(name+'_'))delete S.checkNotes[k];});
-    saveState();openInfoModal(`✅ ${name}の提出履歴・チェックをクリアしました`,renderSettings);
+    saveState(false);openInfoModal(`✅ ${name}の提出履歴・チェックをクリアしました`,renderSettings);
   });
 }
 function resetCastAll(){
@@ -3801,7 +3807,7 @@ function resetCastAll(){
     Object.keys(S.submissions).forEach(k=>{if(k.startsWith(name+'_'))delete S.submissions[k];});
     Object.keys(S.checkData).forEach(k=>{if(k.startsWith(name+'_'))delete S.checkData[k];});
     Object.keys(S.checkNotes).forEach(k=>{if(k.startsWith(name+'_'))delete S.checkNotes[k];});
-    saveState();openInfoModal(`✅ ${name}の全データをクリアしました`,renderSettings);
+    saveState(false);openInfoModal(`✅ ${name}の全データをクリアしました`,renderSettings);
   });
 }
 
@@ -3810,7 +3816,7 @@ function resetSubmissions(){
     S.submissions={};
     S.checkData={};
     S.checkNotes={};
-    saveState();
+    saveState(false);
     openInfoModal('✅ 提出履歴・チェックデータをクリアしました',renderSettings);
   });
 }
@@ -3820,7 +3826,7 @@ function resetShifts(){
     S.submissions={};
     S.checkData={};
     S.checkNotes={};
-    saveState();
+    saveState(false);
     openInfoModal('✅ シフト・提出履歴・チェックデータをクリアしました',renderSettings);
   });
 }
@@ -3830,7 +3836,7 @@ function resetAll(){
     S.checkData={};
     S.checkNotes={};
     S.shifts={};
-    saveState();
+    saveState(false);
     openInfoModal('✅ データをすべてクリアしました',renderSettings);
   });
 }
@@ -3897,7 +3903,7 @@ function renderLogs(){
       </select>
       <input type="text" class="form-input" placeholder="🔍 キャスト名" style="width:120px" value="${window.logCastFilter}"
         oninput="window.logCastFilter=this.value;renderLogs()">
-      <button class="btn btn-outline btn-sm" onclick="if(confirm('ログを全件削除しますか？')){S.operationLog=[];saveState();renderLogs();}">🗑️ クリア</button>
+      <button class="btn btn-outline btn-sm" onclick="if(confirm('ログを全件削除しますか？')){S.operationLog=[];saveState(false);renderLogs();}">🗑️ クリア</button>
     </div>`;
 
   if(!filtered.length){
@@ -4109,7 +4115,7 @@ function saveDayStaffShifts(ds){
     if(!sv){delete S.staffShifts[key];}
     else if(ev&&parseFloat(ev)>parseFloat(sv)){S.staffShifts[key]={start:parseFloat(sv),end:parseFloat(ev),memo:''};}
   });
-  saveState();closeModal();renderStaffCal();
+  saveState(false);closeModal();renderStaffCal();
 }
 
 function openStaffShiftModal(ds,staffName){
@@ -4156,7 +4162,7 @@ function saveStaffShift(ds,sname,start,end,memo){
   const key=sname+'_'+ds;
   if(start==null){delete S.staffShifts[key];}
   else{S.staffShifts[key]={start,end,memo:memo||''};}
-  saveState();closeModal();renderStaffCal();
+  saveState(false);closeModal();renderStaffCal();
 }
 
 // 内勤テンプレ設定モーダル
@@ -4215,7 +4221,7 @@ function saveStaffTmpl(sname){
     else if(sv!=null&&ev!=null){S.castTemplates[sname][dow]={start:sv,end:ev,off:false};}
     else{delete S.castTemplates[sname][dow];}
   });
-  saveState();closeModal();
+  saveState(false);closeModal();
   openInfoModal(`✅ ${sname}の基本シフトを保存しました`);
 }
 
@@ -4322,7 +4328,7 @@ function applyStaffTemplates(){
     }
   });
   if(cnt===0){openInfoModal('テンプレートが設定されていません');return;}
-  saveState();
+  saveState(false);
   openInfoModal(`✅ ${cnt}件のシフトを適用しました`,renderStaffCal);
 }
 

@@ -2370,6 +2370,7 @@ function renderInputCheckBody(){
         <div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap">
           <div class="cast-avatar ${avc(u.name)}" style="width:30px;height:30px;font-size:12px">${u.name[0]}</div>
           <span style="font-weight:800;font-size:15px">${u.name}</span>
+          ${(()=>{const mn=S.castMediaNames&&S.castMediaNames[u.name]||{};const tags=[];if(mn.gokumon)tags.push(`<span style="font-size:10px;color:#dc2626;background:#fee2e2;border-radius:4px;padding:1px 6px;font-weight:600">極:${escHtml(mn.gokumon)}</span>`);if(mn.juhachi)tags.push(`<span style="font-size:10px;color:#2563eb;background:#dbeafe;border-radius:4px;padding:1px 6px;font-weight:600">18:${escHtml(mn.juhachi)}</span>`);return tags.join('');})()}
           <span style="font-size:12px;color:var(--text2)">${getWeekLabel(icWeekKey)}</span>
           <span class="badge ${sBadge[sub.status]||'badge-gray'}">${sMap[sub.status]||sub.status}</span>
           ${S.castFixedMemo&&S.castFixedMemo[u.name]?`<span style="font-size:10px;color:#0284c7;background:#e0f2fe;border-radius:10px;padding:1px 8px">📌 ${escHtml(S.castFixedMemo[u.name].slice(0,20))}${S.castFixedMemo[u.name].length>20?'...':''}</span>`:''}

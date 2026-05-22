@@ -1014,13 +1014,13 @@ function recordFailure(key){
   if(!f[key])f[key]={count:0,lockedUntil:null};
   f[key].count++;
   if(f[key].count>=3){
-    f[key].lockedUntil=Date.now()+60*60*1000; // 1時間
+    f[key].lockedUntil=9999999999999; // 永続ロック（内勤が解除するまで）
     f[key].count=0;
     // GASにもロック情報を記録（内勤が解除できるよう）
     if(key.startsWith('cast_')){
       const castName=key.slice(5);
       if(!S.castLocks)S.castLocks={};
-      S.castLocks[castName]={lockedAt:Date.now(),lockedUntil:Date.now()+60*60*1000};
+      S.castLocks[castName]={lockedAt:Date.now(),lockedUntil:9999999999999};
       saveState();
     }
   }
@@ -1064,7 +1064,7 @@ async function doLogin(){
 
     const lockStatus=checkLocked(lockKey);
     if(lockStatus&&lockStatus.locked){
-      err.textContent=`⛔ ロック中です。あと約${lockStatus.remain}分お待ちください。`;
+      err.textContent='⛔ ログインがロックされています。内勤スタッフにお問い合わせください。';
       err.style.color='#dc2626';
       return;
     }
@@ -1072,7 +1072,7 @@ async function doLogin(){
       const fail=recordFailure(lockKey);
       const remain=3-(fail.count||0);
       if(fail.lockedUntil){
-        err.textContent='⛔ 3回連続で失敗しました。1時間ログインできません。内勤にお問い合わせください。';
+        err.textContent='⛔ 3回連続で失敗しました。内勤スタッフにお問い合わせください。';
       } else {
         err.textContent=`名前またはパスワードが違います（あと${remain}回失敗するとロックされます）`;
       }
@@ -4469,7 +4469,7 @@ function renderHowTo(){
         ・<b>提出期限：毎週土曜17時まで</b>（翌週分のシフト）<br>
         ・一度提出ボタンを押したシフトはご自身では変更・追加不可<br>
         ・変更・追加が必要な場合は<b>LINEで内勤にご連絡</b>ください<br>
-        ・パスワードを3回間違えると1時間ログインできなくなります
+        ・パスワードを3回間違えるとロックされます。解除は内勤にお問い合わせください
       </div>
 
       <div style="background:#f0f9ff;border-radius:8px;padding:12px;margin-bottom:12px;font-size:12px;line-height:1.8">

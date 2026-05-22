@@ -2450,17 +2450,15 @@ function renderInputCheckBody(){
       // 行ステータス判定
       let rowClass='',dayBadge='',dayBadgeCls='';
       if(isChangedDay&&(sub.status==='change_submitted'||sub.status==='change_inputting')){
-        // 変更許可した日でかつ再提出済み→変更提出済み
+        // 変更許可した日・再提出済み
         rowClass='ic-row-change-wait';
         dayBadge='変更入力待ち';dayBadgeCls='day-badge-change-wait';
       } else if(isChangedDay&&sub.status==='change_unlocked'){
-        // 変更許可した日でまだ再提出されていない
+        // 変更許可した日・まだ再提出なし
         rowClass='ic-row-change-unlock';
         dayBadge='変更許可中';dayBadgeCls='day-badge-change-unlock';
-      } else if(sub.status==='change_submitted'&&sh&&sh.start!=null){
-        rowClass='ic-row-change-wait';
-        dayBadge='変更入力待ち';dayBadgeCls='day-badge-change-wait';
       } else if(dayDone&&sh&&sh.start!=null){
+        // 変更許可していない日は通常ロジック
         rowClass='ic-row-all-done';
         dayBadge='全チェック済み';dayBadgeCls='day-badge-done';
       } else if(dayPartial){
@@ -2881,9 +2879,7 @@ function confShiftIC(castName,wk){
     sub.status='change_unlocked';
     delete _pendingChanges[pk];
     addLog('change_unlock',castName,wk,dates.join(','));
-    showSyncOverlay();
-    saveState(false).then(()=>{
-      hideSyncOverlay();
+    saveState(true).then(()=>{
       const labels=dates.map(d=>{const dt=new Date(d);return (dt.getMonth()+1)+'/'+(dt.getDate());}).join('・');
       openInfoModal(`🔓 ${castName}さん（${labels}）の変更を許可しました。キャストにシフト再提出を促してください。`,renderInputCheck);
     });

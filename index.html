@@ -1829,7 +1829,7 @@ function saveShift(ds){
   const k=name+'_'+ds;
   if(!S.shifts[k])S.shifts[k]={};
   S.shifts[k].start=sv;S.shifts[k].end=ev;S.shifts[k].memo=document.getElementById('mM').value;
-  saveState();closeModal();renderCal();
+  saveState(false);closeModal();renderCal();
 }
 function delShift(ds){
   openConfirmModal('この日のシフトを削除しますか？',()=>{delete S.shifts[currentUser.name+'_'+ds];saveState(false);closeModal();renderCal();});
@@ -2199,7 +2199,7 @@ function toggleReminded(castName,wk,checked){
   const key=castName+'_'+wk;
   if(checked){S.remindedCasts[key]=true;}
   else{delete S.remindedCasts[key];}
-  saveState();
+  saveState(false);
   renderDashboard();
 }
 
@@ -2762,7 +2762,7 @@ if(!S.staffShifts)S.staffShifts={};
   } else if(key==='start'||key==='end'){
     S.castTemplates[castName][dow][key]=val===''?null:parseInt(val);
   }
-  saveState();
+  saveState(false);
 }
 
 function applyTemplate(name,y,m){
@@ -2860,7 +2860,7 @@ if(!S.staffShifts)S.staffShifts={};
       delete S.castTemplates[name][dow];
     }
   });
-  saveState();
+  saveState(false);
   closeModal();
   openInfoModal('✅ 基本シフトを保存しました\n「📋 基本適用」で未入力の日に一括適用できます');
 }
@@ -2874,7 +2874,7 @@ if(!S.staffShifts)S.staffShifts={};
 if(!S.operationLog)S.operationLog=[];
   if(!S.castMediaNames[castName])S.castMediaNames[castName]={};
   S.castMediaNames[castName][mediaKey]=val;
-  saveState();
+  saveState(false);
 }
 function saveCastMemo(castName,val){
   if(!S.castMemo)S.castMemo={};
@@ -2886,18 +2886,18 @@ if(!S.castTemplates)S.castTemplates={};
 if(!S.staffShifts)S.staffShifts={};
 if(!S.operationLog)S.operationLog=[];
   S.castMemo[castName]=val;
-  saveState();
+  saveState(false);
 }
 function saveCastFixedMemo(castName,val){
   if(!S.castFixedMemo)S.castFixedMemo={};
 if(!S.castLocks)S.castLocks={};
   S.castFixedMemo[castName]=val;
-  saveState();
+  saveState(false);
   addLog('内勤メモ(固定)更新','キャスト:'+castName);
 }
 function icSaveNote(noteKey,val){
   S.checkNotes[noteKey]=val;
-  saveState();
+  saveState(false);
 }
 // 「確定」ボタン
 function confShiftIC(castName,wk){

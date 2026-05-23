@@ -337,9 +337,9 @@ tr.ic-row-lower td{border-bottom:2px solid #b0bec5!important}
 </div>
 
 <!-- 同期中オーバーレイ -->
-<div id="syncOverlay" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.45);z-index:9999;align-items:center;justify-content:center;flex-direction:column;gap:12px">
-  <div style="width:44px;height:44px;border:4px solid rgba(255,255,255,.2);border-top-color:#f472b6;border-radius:50%;animation:spin .8s linear infinite"></div>
-  <div style="color:#fff;font-size:14px;font-weight:700">同期中...</div>
+<div id="syncOverlay" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.55);z-index:9999;align-items:center;justify-content:center;flex-direction:column;gap:12px">
+  <div style="width:48px;height:48px;border:4px solid rgba(255,255,255,.2);border-top-color:#f472b6;border-radius:50%;animation:spin .8s linear infinite"></div>
+  <div id="syncOverlayMsg" style="color:#fff;font-size:15px;font-weight:700;letter-spacing:.02em">処理中...</div>
 </div>
 <style>@keyframes spin{to{transform:rotate(360deg)}}
 /* ===== 印刷スタイル ===== */
@@ -566,16 +566,27 @@ function loadState(){
 
 // GASからデータを読み込む
 
-function showSyncOverlay(){
+function showSyncOverlay(msg='処理中...'){
   const el=document.getElementById('syncOverlay');
+  const msgEl=document.getElementById('syncOverlayMsg');
   if(el){el.style.display='flex';}
+  if(msgEl){msgEl.textContent=msg;}
+  // 主要ボタンをdisabled
+  document.querySelectorAll('.btn-primary,.btn-success,.btn-warning,.btn-danger,[data-submit]').forEach(b=>{
+    b._wasDisabled=b.disabled;
+    b.disabled=true;
+  });
 }
 function hideSyncOverlay(){
   const el=document.getElementById('syncOverlay');
   if(el){el.style.display='none';}
+  // ボタンを再有効化
+  document.querySelectorAll('.btn-primary,.btn-success,.btn-warning,.btn-danger,[data-submit]').forEach(b=>{
+    if(!b._wasDisabled)b.disabled=false;
+  });
 }
 async function loadFromGAS(){
-  showSyncOverlay();
+  // オーバーレイは呼び出し元で制御
   try{
     // まずlocalStorageのデータを取得
     let localData=null;
@@ -686,7 +697,7 @@ function saveState(showOverlay=true){
   }catch(e){console.warn('localStorage error:',e);}
 
   if(!GAS_URL) return Promise.resolve(false);
-  if(showOverlay) showSyncOverlay();
+  if(showOverlay) showSyncOverlay('保存中...');
 
   // GASに送るデータを構築（画像・ログを除外）
   const gasData={...S};
@@ -1044,8 +1055,10 @@ async function doLogin(){
   const err=document.getElementById('loginError');
   if(!pw){err.textContent='パスワードを入力してください';return;}
   // ログイン前にGASから最新データを取得
-  err.textContent='🔄 データを確認中...';
+  err.textContent='';
+  showSyncOverlay('ログイン中...');
   const gasOk=await loadFromGAS();
+  hideSyncOverlay();
   err.textContent='';
   if(!gasOk){
     err.textContent='⚠️ 通信エラー。ローカルデータでログインします。';
@@ -1094,7 +1107,8 @@ async function doLogin(){
     document.getElementById('castTabs').classList.remove('hidden');
     const sb=document.getElementById('syncBtn');if(sb)sb.style.display='';
     showCastPage('calendar');
-    loadFromGAS().then(ok=>{
+    showSyncOverlay('同期中...');
+  loadFromGAS().then(ok=>{
       if(ok) showCastPage(_currentCastPage);
       else showToast('⚠️ 同期に失敗しました。ローカルデータを表示中です。');
     });
@@ -1143,6 +1157,7 @@ let _currentStaffPage='dashboard';
 function syncAndReload(){
   const btn=document.getElementById('syncBtn');
   if(btn){btn.textContent='🔄 同期中...';btn.disabled=true;}
+  showSyncOverlay('同期中...');
   loadFromGAS().then(ok=>{
     if(btn){btn.textContent='🔄 同期';btn.disabled=false;}
     // 成功・失敗問わず常に再描画（localStorageも含めて最新を表示）
@@ -1152,6 +1167,7 @@ function syncAndReload(){
   });
 }
 function reloadCurrentPage(){
+  showSyncOverlay('同期中...');
   loadFromGAS().then(ok=>{
     if(!ok)showToast('⚠️ 同期に失敗しました');
     if(currentType==='cast'){
@@ -1403,7 +1419,8 @@ function applyBulk(){
   }
   if(cnt===0){openInfoModal('入力できる日がありませんでした（営業時間外・確定済みなど）');return;}
   lastBulkStart=sv;lastBulkEnd=ev;
-  saveState();openInfoModal(`${cnt}日分を一括入力しました`,renderCal);
+  showSyncOverlay('反映中...');
+  saveState(false).then(()=>{hideSyncOverlay();openInfoModal(`${cnt}日分を一括入力しました`,renderCal);});
 }
 function calNav(d){calM+=d;if(calM<0){calM=11;calY--;}if(calM>11){calM=0;calY++;}calChecked.clear();renderCal();}
 function toggleCalCheck(ds){
@@ -1442,7 +1459,9 @@ function applyChecked(){
     S.shifts[name+'_'+ds].start=sv;S.shifts[name+'_'+ds].end=ev;cnt++;
   });
   lastBulkStart=sv;lastBulkEnd=ev;
-  calChecked.clear();saveState();openInfoModal(`${cnt}日分を入力しました`,renderCal);
+  calChecked.clear();
+  showSyncOverlay('反映中...');
+  saveState(false).then(()=>{hideSyncOverlay();openInfoModal(`${cnt}日分を入力しました`,renderCal);});
 }
 function clearCalChecks(){calChecked.clear();renderCal();}
 
@@ -1799,7 +1818,7 @@ function saveShift(ds){
   saveState();closeModal();renderCal();
 }
 function delShift(ds){
-  openConfirmModal('この日のシフトを削除しますか？',()=>{delete S.shifts[currentUser.name+'_'+ds];saveState();closeModal();renderCal();});
+  openConfirmModal('この日のシフトを削除しますか？',()=>{delete S.shifts[currentUser.name+'_'+ds];saveState(false);closeModal();renderCal();});
 }
 
 function submitShifts(){
@@ -2888,7 +2907,9 @@ function confShiftIC(castName,wk){
     sub.status='change_unlocked';
     delete _pendingChanges[pk];
     addLog('change_unlock',castName,wk,dates.join(','));
-    saveState(true).then(()=>{
+    showSyncOverlay('変更許可中...');
+    saveState(false).then(()=>{
+      hideSyncOverlay();
       const labels=dates.map(d=>{const dt=new Date(d);return (dt.getMonth()+1)+'/'+(dt.getDate());}).join('・');
       openInfoModal(`🔓 ${castName}さん（${labels}）の変更を許可しました。キャストにシフト再提出を促してください。`,renderInputCheck);
     });
@@ -2961,7 +2982,7 @@ function confShiftIC(castName,wk){
   });
   // GASに保存してからポップアップ（オーバーレイ表示）
   try{localStorage.setItem('shiftSysV8',JSON.stringify(S));}catch(e){}
-  showSyncOverlay();
+  showSyncOverlay('更新中...');
   const body=new FormData();
   body.append('action','save');
   body.append('token','sakura2025shift');

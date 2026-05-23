@@ -696,7 +696,8 @@ function saveState(showOverlay=true){
     localStorage.setItem('shiftSysV8_backup',_j); // 二重バックアップ
   }catch(e){console.warn('localStorage error:',e);}
 
-  if(!GAS_URL) return Promise.resolve(false);
+  if(!GAS_URL){_isSaving=false;return Promise.resolve(false);}
+  _isSaving=true;
   if(showOverlay) showSyncOverlay('保存中...');
 
   // GASに送るデータを構築（画像・ログを除外）
@@ -719,23 +720,25 @@ function saveState(showOverlay=true){
   body.append('action','save');
   body.append('token','sakura2025shift');
   body.append('data',dataStr);
-  return fetch(GAS_URL,{method:'POST',body})
+  _saveQueue=fetch(GAS_URL,{method:'POST',body})
     .then(r=>r.json())
     .then(result=>{
+      _isSaving=false;
       if(showOverlay) hideSyncOverlay();
       if(result&&result.error){
         console.warn('GAS save error:',result.error);
         showToast('⚠️ GAS保存エラー: '+result.error);
         return false;
       }
-      console.log('[saveState] GAS saved OK');
       return true;
     })
     .catch(e=>{
+      _isSaving=false;
       if(showOverlay) hideSyncOverlay();
       console.warn('GAS save failed',e);
       return false;
     });
+  return _saveQueue;
 }
 
 // Migration: ensure new fields
@@ -916,6 +919,15 @@ function setNoticeImage(key,data){
 
 // 休日行の折りたたみトグル
 const _restCollapsed={};
+let _isSaving=false;
+let _saveQueue=Promise.resolve(true);
+
+// 重要操作前に保存完了を待つ（軽い保存が進行中ならくるくる表示して待機）
+function waitForSave(msg){
+  if(!_isSaving) return Promise.resolve(true);
+  showSyncOverlay(msg||'保存中です。完了までお待ちください...');
+  return _saveQueue.finally(()=>hideSyncOverlay());
+}
 const _pendingChanges={}; // {castName_wk: Set([ds,...])}
 function toggleRestRows(castName){
   _restCollapsed[castName]=!_restCollapsed[castName];
@@ -1157,8 +1169,10 @@ let _currentStaffPage='dashboard';
 function syncAndReload(){
   const btn=document.getElementById('syncBtn');
   if(btn){btn.textContent='🔄 同期中...';btn.disabled=true;}
+  waitForSave('同期中...').then(()=>{
   showSyncOverlay('同期中...');
-  loadFromGAS().then(ok=>{
+  return loadFromGAS();
+  }).then(ok=>{
     if(btn){btn.textContent='🔄 同期';btn.disabled=false;}
     // 成功・失敗問わず常に再描画（localStorageも含めて最新を表示）
     if(currentType==='cast') showCastPage(_currentCastPage);
@@ -2641,7 +2655,7 @@ function icToggleCheck(castName,wk,ds,item){
   if(S.submissions[subKey]&&S.submissions[subKey].status==='waiting'){
     S.submissions[subKey].status='inputting';
   }
-  saveState();renderInputCheckBody();
+  saveState(false);renderInputCheckBody();
 }
 
 // 一括チェック（日付単位）
@@ -2699,7 +2713,8 @@ function icDoBulkCheck(castName,wk,ds,checked){
       cd.checked=false;cd.checkedBy='';cd.color='';
     }
   });
-  saveState();renderInputCheckBody();
+  showSyncOverlay('反映中...');
+  saveState(false).then(()=>{hideSyncOverlay();renderInputCheckBody();});
 }
 
 // Enter/Tab キーボードナビゲーション
@@ -2980,7 +2995,8 @@ function confShiftIC(castName,wk){
       sub.checkedDates[ds]={datetime:_datetime,bizDate:_bizDate,history};
     }
   });
-  // GASに保存してからポップアップ（オーバーレイ表示）
+  // 保存中なら完了を待ってから実行
+  waitForSave().then(()=>{
   try{localStorage.setItem('shiftSysV8',JSON.stringify(S));}catch(e){}
   showSyncOverlay('更新中...');
   const body=new FormData();
@@ -3003,6 +3019,7 @@ function confShiftIC(castName,wk){
       const statusLabel=STATUS_LABEL[sub.status]||sub.status;
       openInfoModal(`⚠️ ネットワークエラー（ローカルのみ保存）<br><span style="font-size:12px;color:var(--text2)">${castName}：${statusLabel}</span><br><span style="font-size:11px;color:#dc2626">同期ボタンで再試行してください</span>`, renderInputCheck);
     });
+  }); // end waitForSave
 }
 
 

@@ -1337,7 +1337,11 @@ function renderCal(){
         const st=subTmp.status;
         if(st==='inputting'||st==='change_inputting')tc+='inputting';
         else if(st==='waiting'||st==='change_submitted')tc+='pending';
-        else if(st==='change_unlocked')tc+='unlocked';
+        else if(st==='change_unlocked'){
+          // changedDatesに含まれる日だけunlocked色、それ以外はconfirmed色
+          const inCD=subTmp.changedDates&&subTmp.changedDates.includes(ds);
+          tc+=inCD?'unlocked':'confirmed';
+        }
         else tc+='pending';
       } else {tc+='input';}
       inner+=`<div class="${tc}">${fmtR(sh.start,sh.end)}</div>`;
@@ -1349,7 +1353,11 @@ function renderCal(){
       const chked=calChecked.has(ds);
       inner+=`<input type="checkbox" class="cal-check" ${chked?'checked':''} onclick="event.stopPropagation();toggleCalCheck('${ds}')" style="position:absolute;bottom:2px;right:2px;width:12px;height:12px;accent-color:var(--pink2);cursor:pointer">`;
     }
-    const cellClick=isClosed?'':(conf?`onclick="openLockedModal('${ds}')"`:` onclick="openShiftModal('${ds}')"`);
+    // change_unlocked でも changedDates 外の日はロック扱いに
+    const wkTmp2=getWeekKey(ds);
+    const subTmp2=S.submissions[name+'_'+wkTmp2];
+    const isLockedByConf=conf||(subTmp2&&subTmp2.status==='change_unlocked'&&subTmp2.changedDates&&subTmp2.changedDates.length>0&&!subTmp2.changedDates.includes(ds));
+    const cellClick=isClosed?'':(isLockedByConf?`onclick="openLockedModal('${ds}')"`:` onclick="openShiftModal('${ds}')"`);
     html+=`<div class="${cls}" ${cellClick} style="${isClosed?'opacity:.4;cursor:default;':''}">${inner}</div>`;
   }
   const endDow=(last.getDay()+6)%7;
@@ -2490,12 +2498,13 @@ function renderInputCheckBody(){
         // 店舗名ラベル（上部に薄く表示）
         const storeLabel=`<div style="font-size:8px;color:#1e2a3a;font-weight:600;margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:50px;text-align:center">${shortName(it)}</div>`;
         const isRestDay=!sh||sh.start==null;
-        const cellOnclick=isRestDay?'':`onclick="icToggleCheck('${u.name}','${icWeekKey}','${ds}','${it}')"`;
+        const isChangeUnlocked=sub&&sub.status==='change_unlocked'&&!isChangedDay;
+      const cellOnclick=(isRestDay||isChangedDay&&sub&&sub.status==='change_unlocked')?'':`onclick="icToggleCheck('${u.name}','${icWeekKey}','${ds}','${it}')"`;
         return `<td class="ic-check-cell ${cd.checked?'checked':''}" id="${cellId}"
           style="padding:3px 2px!important;min-width:52px;${_hist&&_hist.length>1?'width:auto;':'width:52px;'}${cellBg?`background:${cellBg};`:''}${borderCol};vertical-align:top;${isRestDay?'pointer-events:none;':''}"
           ${cellOnclick}>
           ${storeLabel}
-          <input type="checkbox" class="ic-checkbox" ${cd.checked?'checked':''} ${isRestDay?'disabled':''}
+          <input type="checkbox" class="ic-checkbox" ${cd.checked?'checked':''} ${(isRestDay||(isChangedDay&&sub&&sub.status==='change_unlocked'))?'disabled':''}
             style="width:13px;height:13px;${isRestDay?'opacity:.4;cursor:default;':''}${chkColor?`accent-color:${chkColor}`:''}"
             onkeydown="icCellKeyNav(event,'${u.name}','${ds}',${itmIdx},${items.length},'${icWeekKey}')">
           ${chkDateLabel}

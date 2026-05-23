@@ -1233,7 +1233,7 @@ function countZone(ds,zi){
   return c;
 }
 function getAlerts(ds){const a=[];for(let i=0;i<4;i++){const cnt=countZone(ds,i),min=S.minPeople[tzMinKey(TIME_ZONES[i])]||0;if(cnt<min)a.push({label:TIME_ZONES[i].label,need:min-cnt});}return a;}
-function escHtml(s){return(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br>');}
+function escHtml(s){return(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
 
 // ===== CAST PAGES =====
 function showCastPage(p){
@@ -4403,6 +4403,13 @@ ${castUrl}
 ・「📷」→ SNS投稿用のシフト画像を保存できます
 
 ⚠️ パスワードは他の人に教えないでください
+
+━━━━━━━━━━━━━━━
+📱 推奨の開き方
+URLをタップ後、右上メニューから
+「ブラウザで開く」を選択してください
+ChromeまたはSafariでの使用を推奨します
+1つのブラウザだけで使用してください
 ━━━━━━━━━━━━━━━</textarea>
       </div>
     </div>

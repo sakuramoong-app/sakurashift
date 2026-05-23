@@ -1203,8 +1203,8 @@ function isConfirmed(name,ds){
   // 提出済み全ステータスをロック（waiting以降は全てロック）
   // 変更可能（change_unlocked）のみキャストが再提出できる
   if(s.status==='change_unlocked'){
-    // changedDatesが空なら全日解除、あれば指定日のみ
-    if(!s.changedDates||s.changedDates.length===0)return false;
+    // changedDatesに含まれる日のみ解除、含まれない日はロック
+    if(!s.changedDates||s.changedDates.length===0)return true; // 空なら全日ロック
     return !s.changedDates.includes(ds);
   }
   const lockedStatuses=['waiting','inputting','confirmed',
@@ -3005,10 +3005,11 @@ function icDoRequestChange(castName,wk,ds){
       if(S.checkData[cdKey]){S.checkData[cdKey]={checked:false,checkedBy:'',color:''};}
     });
   });
-  // changedDatesを削除してシンプルに週全体解除
-  sub.changedDates=[];
+  // 指定日のみ変更許可（dsが指定されている場合）
+  const existingDates=sub.changedDates||[];
+  sub.changedDates=ds?[...new Set([...existingDates,ds])]:existingDates;
   sub.status='change_unlocked';
-  addLog('change_unlock',castName,wk,'週全体の変更許可');
+  addLog('change_unlock',castName,wk,ds||'週全体');
   saveState(false);
   openInfoModal(`🔓 ${castName} さん（${getWeekLabel(wk)}）の変更を許可しました。<br>キャストにシフト再提出を促してください。`,renderInputCheck);
 }

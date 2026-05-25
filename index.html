@@ -2203,42 +2203,27 @@ function renderStatusList(){
   if(!castList.length){
     html+=`<p style="color:var(--text2);font-size:13px;padding:8px 0">該当するキャストはいません</p>`;
   } else {
-    // グループ別・固定高さカード型2列グリッド
-    const groups=KANA_GROUPS.map(g=>({
-      ...g,
-      members:castList.filter(u=>g.chars.includes(u.name[0]))
-    })).filter(g=>g.members.length>0);
-    const others=castList.filter(u=>!KANA_GROUPS.some(g=>g.chars.includes(u.name[0])));
-    if(others.length) groups.push({label:'その他',members:others});
-
-    groups.forEach(g=>{
-      html+=`<div style="margin-bottom:14px">
-        <div style="font-size:11px;font-weight:700;color:var(--text2);margin-bottom:6px;padding:3px 8px;background:#f1f5f9;border-radius:6px;display:inline-block">${g.label}行（${g.members.length}名）</div>
-        <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:6px">`;
-      g.members.forEach(u=>{
-        const sub=S.submissions[u.name+'_'+slWeekKey];
-        const idx=S.castList.indexOf(u);
-        const isReminded=S.remindedCasts&&S.remindedCasts[u.name+'_'+slWeekKey];
-        const showRemind=slFilter==='unsubmitted'&&slWeekKey===getNextWk();
-        const cardBg=isReminded?'#f0fdf4':idx%2===0?'#fff':'#fafafa';
-        const cardBorder=isReminded?'#86efac':'var(--border)';
-        html+=`<div style="background:${cardBg};border:1px solid ${cardBorder};border-radius:8px;padding:7px 9px">
-          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
-            <div style="display:flex;align-items:center;gap:5px;min-width:0">
-              <div class="cast-avatar ${AVC[idx%5]}" style="width:22px;height:22px;font-size:9px;flex-shrink:0">${u.name[0]}</div>
-              <span style="font-weight:700;font-size:13px;cursor:pointer;color:var(--navy);text-decoration:underline;text-underline-offset:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis"
-                onclick="jumpToInputCheck('${u.name}','${slWeekKey}')">${u.name}</span>
-            </div>
-            <span class="badge ${sub?bMap[sub.status]||'badge-gray':'badge-danger'}" style="font-size:11px;flex-shrink:0;white-space:nowrap">${sub?sMap[sub.status]||sub.status:'未提出'}</span>
+    // シンプルなリスト型
+    castList.forEach((u,i)=>{
+      const sub=S.submissions[u.name+'_'+slWeekKey];
+      const idx=S.castList.indexOf(u);
+      const isReminded=S.remindedCasts&&S.remindedCasts[u.name+'_'+slWeekKey];
+      const showRemind=slFilter==='unsubmitted'&&slWeekKey===getNextWk();
+      const rowBg=i%2===0?'#fff':'#f8fafc';
+      html+=`<div style="display:flex;align-items:center;gap:8px;padding:8px 4px;border-bottom:1px solid var(--border);background:${rowBg}">
+        <div class="cast-avatar ${AVC[idx%5]}" style="width:28px;height:28px;font-size:11px;flex-shrink:0">${u.name[0]}</div>
+        <div style="flex:1;min-width:0">
+          <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+            <span style="font-weight:700;font-size:14px;cursor:pointer;color:var(--navy);text-decoration:underline;text-underline-offset:2px;white-space:nowrap"
+              onclick="jumpToInputCheck('${u.name}','${slWeekKey}')">${u.name}</span>
+            <span class="badge ${sub?bMap[sub.status]||'badge-gray':'badge-danger'}">${sub?sMap[sub.status]||sub.status:'未提出'}</span>
+            ${showRemind?`<label style="display:flex;align-items:center;gap:3px;font-size:11px;color:var(--text2);cursor:pointer"><input type="checkbox" ${isReminded?'checked':''} onchange="toggleReminded('${u.name}','${slWeekKey}',this.checked)" style="accent-color:var(--pink2)">催促済み</label>`:''}
           </div>
-          <div style="font-size:9px;color:var(--text2);line-height:1.7">
-            <div>提出：${sub?.submittedAt||'—'}</div>
-            <div>確定：${sub?.confirmedAt||'—'}</div>
+          <div style="font-size:10px;color:var(--text2);margin-top:1px">
+            提出：${sub?.submittedAt||'—'}　確定：${sub?.confirmedAt||'—'}
           </div>
-          ${showRemind?`<label style="display:flex;align-items:center;gap:3px;margin-top:4px;font-size:10px;color:var(--text2);cursor:pointer"><input type="checkbox" ${isReminded?'checked':''} onchange="toggleReminded('${u.name}','${slWeekKey}',this.checked)" style="accent-color:var(--pink2)">催促済み</label>`:''}
-        </div>`;
-      });
-      html+=`</div></div>`;
+        </div>
+      </div>`;
     });
   }
   html+=`</div>`;

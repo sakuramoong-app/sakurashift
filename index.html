@@ -933,15 +933,15 @@ const _pendingChanges={}; // {castName_wk: Set([ds,...])}
 // icWeekKeyの月に含まれる全日付を返す
 function getMonthDatesForWk(wk){
   const [y,mo,d]=wk.split('-').map(Number);
-  const base=new Date(y,mo-1,d);
+  const base=new Date(y,mo-1,d,12,0,0);
   const month=base.getMonth();
-  // 月の1日から末日まで
-  const first=new Date(y,month,1);
-  const last=new Date(y,month+1,0);
+  const year=base.getFullYear();
+  // 月の1日から末日まで（localDateStrでUTCズレ防止）
   const result=[];
-  const cur=new Date(first);
-  while(cur<=last){
-    result.push(cur.toISOString().slice(0,10));
+  const cur=new Date(year,month,1,12,0,0);
+  const lastDay=new Date(year,month+1,0,12,0,0);
+  while(cur<=lastDay){
+    result.push(localDateStr(new Date(cur)));
     cur.setDate(cur.getDate()+1);
   }
   return result;

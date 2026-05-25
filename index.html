@@ -2220,15 +2220,16 @@ function renderStatusList(){
         const idx=S.castList.indexOf(u);
         const isReminded=S.remindedCasts&&S.remindedCasts[u.name+'_'+slWeekKey];
         const showRemind=slFilter==='unsubmitted'&&slWeekKey===getNextWk();
-        const cardBg=idx%2===0?'#fff':'#fafafa';
-        html+=`<div style="background:${cardBg};border:1px solid var(--border);border-radius:8px;padding:7px 9px;opacity:${isReminded?0.6:1}">
+        const cardBg=isReminded?'#f0fdf4':idx%2===0?'#fff':'#fafafa';
+        const cardBorder=isReminded?'#86efac':'var(--border)';
+        html+=`<div style="background:${cardBg};border:1px solid ${cardBorder};border-radius:8px;padding:7px 9px">
           <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
             <div style="display:flex;align-items:center;gap:5px;min-width:0">
               <div class="cast-avatar ${AVC[idx%5]}" style="width:22px;height:22px;font-size:9px;flex-shrink:0">${u.name[0]}</div>
               <span style="font-weight:700;font-size:13px;cursor:pointer;color:var(--navy);text-decoration:underline;text-underline-offset:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis"
                 onclick="jumpToInputCheck('${u.name}','${slWeekKey}')">${u.name}</span>
             </div>
-            <span class="badge ${sub?bMap[sub.status]||'badge-gray':'badge-danger'}" style="font-size:9px;padding:1px 5px;flex-shrink:0;white-space:nowrap">${sub?sMap[sub.status]||sub.status:'未提出'}</span>
+            <span class="badge ${sub?bMap[sub.status]||'badge-gray':'badge-danger'}" style="font-size:11px;flex-shrink:0;white-space:nowrap">${sub?sMap[sub.status]||sub.status:'未提出'}</span>
           </div>
           <div style="font-size:9px;color:var(--text2);line-height:1.7">
             <div>提出：${sub?.submittedAt||'—'}</div>

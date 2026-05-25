@@ -2213,7 +2213,7 @@ function renderStatusList(){
 
     groups.forEach((g,gi)=>{
       html+=`<div style="margin-bottom:10px">
-        <div style="font-size:13px;font-weight:800;color:#fff;background:#64748b;margin-bottom:6px;padding:3px 12px;border-radius:20px;display:inline-block">${g.label}行</div>
+        <div style="font-size:13px;font-weight:800;color:#fff;background:#bc8f8f;margin-bottom:6px;padding:3px 12px;border-radius:20px;display:inline-block">${g.label}行</div>
         <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:4px">`;
       g.members.forEach(u=>{
         const sub=S.submissions[u.name+'_'+slWeekKey];

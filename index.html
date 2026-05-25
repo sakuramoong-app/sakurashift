@@ -2165,8 +2165,9 @@ function renderStatusList(){
     </div></div>
   </div>`;
 
-  // 週タブ
-  html+=`<div class="week-selector" style="margin-bottom:10px">`;
+  // 週タブ＋フィルタをstickyで固定
+  html+=`<div style="position:sticky;top:96px;z-index:90;background:var(--bg);padding:6px 0 4px;margin-bottom:4px;border-bottom:1px solid var(--border)">`;
+  html+=`<div class="week-selector" style="margin-bottom:6px">`;
   allWks.forEach(wk=>{
     const _isCurrWkSL=wk===getCurrWk(),_isNextWkSL=wk===getNextWk();
     const _wkLabelSL=_isCurrWkSL?`今週 ${getWeekLabel(wk)}`:_isNextWkSL?`来週 ${getWeekLabel(wk)}`:getWeekLabel(wk);
@@ -2175,9 +2176,8 @@ function renderStatusList(){
   html+=`</div>`;
 
   // フィルタータブ
-  html+=`<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px">`;
+  html+=`<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:6px">`;
   filters.forEach(f=>{
-    // このフィルターに該当するキャスト数
     let cnt=0;
     if(f.key==='all') cnt=S.castList.length;
     else if(f.key==='unsubmitted') cnt=S.castList.filter(u=>!S.submissions[u.name+'_'+slWeekKey]).length;
@@ -2187,7 +2187,7 @@ function renderStatusList(){
       ${f.label} <span style="background:${slFilter===f.key?'var(--pink)':'var(--border)'};color:${slFilter===f.key?'#fff':'var(--text2)'};border-radius:10px;padding:1px 6px;font-size:11px;margin-left:2px">${cnt}</span>
     </button>`;
   });
-  html+=`</div>`;
+  html+=`</div></div>`;
 
   // フィルター適用済みキャストリスト
   let castList=[...S.castList].sort((a,b)=>a.name.localeCompare(b.name,'ja')).filter((u,i)=>{
@@ -2213,7 +2213,7 @@ function renderStatusList(){
 
     groups.forEach((g,gi)=>{
       html+=`<div style="margin-bottom:10px">
-        <div style="font-size:13px;font-weight:800;color:#fff;background:#bc8f8f;margin-bottom:6px;padding:3px 12px;border-radius:20px;display:inline-block">${g.label}行</div>
+        <div style="font-size:13px;font-weight:800;color:#4a4080;background:#e6e6fa;margin-bottom:6px;padding:3px 12px;border-radius:20px;display:inline-block">${g.label}行</div>
         <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:4px">`;
       g.members.forEach(u=>{
         const sub=S.submissions[u.name+'_'+slWeekKey];
@@ -2226,7 +2226,7 @@ function renderStatusList(){
           onclick="jumpToInputCheck('${u.name}','${slWeekKey}')">
           <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:4px">
             <div>
-              <div style="font-weight:700;font-size:12px;color:var(--navy)">${u.name}</div>
+              <div style="font-weight:700;font-size:12px;color:var(--navy);text-decoration:underline;text-underline-offset:2px">${u.name}</div>
               <span class="badge ${badgeCls}" style="font-size:10px;padding:1px 5px;white-space:nowrap;margin-top:2px;display:inline-block">${statusTxt}</span>
               ${showRemind?`<label onclick="event.stopPropagation()" style="display:flex;align-items:center;gap:2px;margin-top:3px;font-size:9px;color:var(--text2);cursor:pointer"><input type="checkbox" ${isReminded?'checked':''} onchange="toggleReminded('${u.name}','${slWeekKey}',this.checked)" style="accent-color:var(--pink2);width:10px;height:10px">催促</label>`:''}
             </div>

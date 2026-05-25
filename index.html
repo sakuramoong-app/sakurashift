@@ -762,6 +762,7 @@ let calChecked=new Set();
 let lastBulkStart=12,lastBulkEnd=13; // 最後に使った一括時刻
 let icSearchQuery='';
 let _icJumping=false; // ジャンプ時のリセット防止フラグ
+const _icViewMode={}; // キャストごとの表示モード {castName: 'week'|'month'}
 let slWeekKey=''; // ステータス一覧の選択週
 let slFilter='all'; // ステータスフィルター
 let icWeekKey='';
@@ -929,6 +930,40 @@ function waitForSave(msg){
   return _saveQueue.finally(()=>hideSyncOverlay());
 }
 const _pendingChanges={}; // {castName_wk: Set([ds,...])}
+// icWeekKeyの月に含まれる全日付を返す
+function getMonthDatesForWk(wk){
+  const [y,mo,d]=wk.split('-').map(Number);
+  const base=new Date(y,mo-1,d);
+  const month=base.getMonth();
+  // 月の1日から末日まで
+  const first=new Date(y,month,1);
+  const last=new Date(y,month+1,0);
+  const result=[];
+  const cur=new Date(first);
+  while(cur<=last){
+    result.push(cur.toISOString().slice(0,10));
+    cur.setDate(cur.getDate()+1);
+  }
+  return result;
+}
+// その月の提出済み週を返す
+function getMonthWksForWk(wk){
+  const [y,mo,d]=wk.split('-').map(Number);
+  const base=new Date(y,mo-1,d);
+  const month=base.getMonth();
+  const first=new Date(y,month,1);
+  const last=new Date(y,month+1,0);
+  const wkSet=new Set();
+  const cur=new Date(first);
+  while(cur<=last){
+    wkSet.add(getWeekKey(new Date(cur)));
+    cur.setDate(cur.getDate()+7);
+  }
+  // 月末も含める
+  wkSet.add(getWeekKey(new Date(last)));
+  return [...wkSet].sort();
+}
+
 function toggleRestRows(castName){
   _restCollapsed[castName]=!_restCollapsed[castName];
   const collapsed=_restCollapsed[castName];
@@ -2412,7 +2447,8 @@ function renderInputCheckBody(){
     const isConf=sub.status==='confirmed'||sub.status==='change_confirmed';
     const changedDates=sub.changedDates||[];
     const _pk=u.name+'_'+icWeekKey;
-    const dates=getWeekDates(icWeekKey);
+    const _castViewMode=_icViewMode[u.name]||'week';
+    const dates=_castViewMode==='month'?getMonthDatesForWk(icWeekKey):getWeekDates(icWeekKey);
 
     // チェック集計
     const totalChecks=dates.length*items.length;
@@ -2463,8 +2499,15 @@ function renderInputCheckBody(){
     }
 
     const hasRestDays=dates.some(ds=>{const sh2=S.shifts[u.name+'_'+ds];return !sh2||sh2.start==null;});
-    html+=`<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
-      ${hasRestDays?`<button id="restToggle_${u.name}" onclick="toggleRestRows('${u.name}')" style="font-size:11px;padding:3px 10px;border:1px solid var(--border);border-radius:12px;background:#f8fafc;cursor:pointer;color:var(--text2)">🗂️ 休日を折りたたむ</button>`:''}
+    const _viewMode=_icViewMode[u.name]||'week';
+    const _wkDate=new Date(icWeekKey);
+    const _monthLabel=`${_wkDate.getFullYear()}年${_wkDate.getMonth()+1}月`;
+    html+=`<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;flex-wrap:wrap">
+      <div style="display:flex;border:1px solid var(--border);border-radius:8px;overflow:hidden;font-size:11px">
+        <button onclick="_icViewMode['${u.name}']='week';renderInputCheckBody()" style="padding:3px 10px;background:${_viewMode==='week'?'var(--navy)':'#f8fafc'};color:${_viewMode==='week'?'#fff':'var(--text2)'};border:none;cursor:pointer;font-size:11px">週</button>
+        <button onclick="_icViewMode['${u.name}']='month';renderInputCheckBody()" style="padding:3px 10px;background:${_viewMode==='month'?'var(--navy)':'#f8fafc'};color:${_viewMode==='month'?'#fff':'var(--text2)'};border:none;cursor:pointer;font-size:11px">${_monthLabel}</button>
+      </div>
+      ${hasRestDays&&_viewMode==='week'?`<button id="restToggle_${u.name}" onclick="toggleRestRows('${u.name}')" style="font-size:11px;padding:3px 10px;border:1px solid var(--border);border-radius:12px;background:#f8fafc;cursor:pointer;color:var(--text2)">🗂️ 休日を折りたたむ</button>`:''}
     </div>`;
     html+=`<div class="ic-table-wrap" id="wrap_${u.name}" onscroll="icScrollPositions['${u.name}']=this.scrollLeft">
     <table class="ic-table" id="tbl_${u.name}">
@@ -2485,14 +2528,18 @@ function renderInputCheckBody(){
       const isSun=d.getDay()===0,isSat=d.getDay()===6,isHol=HOLIDAYS.includes(ds);
       const sh=S.shifts[u.name+'_'+ds];
       const shiftLabel=sh&&sh.start!=null?fmtR(sh.start,sh.end):'';
-      const noteKey=u.name+'_'+icWeekKey+'_'+ds;
+      // 月表示時は日付ごとに正しい週キーを使う
+      const dsWk=_castViewMode==='month'?getWeekKey(new Date(+_dp[0],+_dp[1]-1,+_dp[2],12,0,0)):icWeekKey;
+      const dsub=S.submissions[u.name+'_'+dsWk]||{};
+      const noteKey=u.name+'_'+dsWk+'_'+ds;
       const noteVal=S.checkNotes[noteKey]||'';
-      const isChangedDay=(_pendingChanges[_pk]&&_pendingChanges[_pk].has(ds))||changedDates.includes(ds);
+      const dChangedDates=dsub.changedDates||[];
+      const isChangedDay=(_pendingChanges[_pk]&&_pendingChanges[_pk].has(ds))||dChangedDates.includes(ds);
       const isPending=_pendingChanges[_pk]&&_pendingChanges[_pk].has(ds);
 
-      // この日のチェック状態分析
+      // この日のチェック状態分析（月表示時はdsWkを使用）
       const dayChecks=items.map(it=>{
-        const cd=S.checkData[u.name+'_'+icWeekKey+'_'+ds+'_'+it];
+        const cd=S.checkData[u.name+'_'+dsWk+'_'+ds+'_'+it];
         return cd&&cd.checked;
       });
       const dayDone=dayChecks.every(v=>v);
@@ -2501,11 +2548,11 @@ function renderInputCheckBody(){
 
       // 行ステータス判定
       let rowClass='',dayBadge='',dayBadgeCls='';
-      if(isChangedDay&&(sub.status==='change_submitted'||sub.status==='change_inputting')){
+      if(isChangedDay&&(dsub.status==='change_submitted'||dsub.status==='change_inputting')){
         // 変更許可した日・再提出済み
         rowClass='ic-row-change-wait';
         dayBadge='変更入力待ち';dayBadgeCls='day-badge-change-wait';
-      } else if(isChangedDay&&sub.status==='change_unlocked'){
+      } else if(isChangedDay&&dsub.status==='change_unlocked'){
         // 変更許可した日・まだ再提出なし
         rowClass='ic-row-change-unlock';
         dayBadge='変更許可中';dayBadgeCls='day-badge-change-unlock';
@@ -2528,7 +2575,7 @@ function renderInputCheckBody(){
 
       // チェックセルを生成する関数
       function mkChkCell(it,itmIdx){
-        const cdKey=u.name+'_'+icWeekKey+'_'+ds+'_'+it;
+        const cdKey=u.name+'_'+dsWk+'_'+ds+'_'+it;
         const cd=S.checkData&&S.checkData[cdKey]?S.checkData[cdKey]:{checked:false,checkedBy:'',color:''};
         const chkColor=cd.checked&&cd.color?cd.color:null;
         const cellBg=cd.checked?(chkColor?chkColor+'15':'#f0fdf4'):'';
@@ -2581,7 +2628,7 @@ function renderInputCheckBody(){
         <td class="ic-bulk-cell" rowspan="2" style="padding:3px 2px!important;min-width:32px;border-right:1px solid var(--border)!important;vertical-align:middle">
           <input type="checkbox" title="一括チェック" ${allCheckedForDay?'checked':''} ${(!sh||sh.start==null)?'disabled':''}
             style="width:13px;height:13px;${(!sh||sh.start==null)?'cursor:default;opacity:.4;':'cursor:pointer;'}accent-color:var(--pink2);display:block;margin:0 auto"
-            onchange="icBulkCheck('${u.name}','${icWeekKey}','${ds}',this.checked)">
+            onchange="icBulkCheck('${u.name}','${dsWk}','${ds}',this.checked)">
         </td>
         ${STORES.slice(0,7).map((it,i)=>items.includes(it)?mkChkCell(it,items.indexOf(it)):`<td style="min-width:52px;background:#f0f0f0;border:1px solid #d1d5db;vertical-align:top;padding:3px 2px"><div style="font-size:8px;color:rgba(0,0,0,.2);margin-bottom:2px;white-space:nowrap;text-align:center">${shortName(it)}</div><div style="width:14px;height:14px;border:1.5px solid #c0c0c0;border-radius:3px;background:#e5e7eb;margin:0 auto"></div></td>`).join('')}<td style="min-width:48px;background:inherit"></td>
         <td class="ic-note-cell" rowspan="2" style="min-width:90px;border-left:1px solid var(--border)!important;vertical-align:top;padding:4px 5px!important">

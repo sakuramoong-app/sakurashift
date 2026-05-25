@@ -2311,8 +2311,13 @@ function renderInputCheck(){
   });
   // 今週・来週・翌々週も常に含める
   [getCurrWk(),getNextWk(),getNextNextWk()].forEach(w=>submittedWks.add(w));
-  // 降順ソート（新しい週が先頭）最大8週
-  const wks=[...submittedWks].sort().slice(-8); // 昇順：最新8週
+  // 全提出週を表示（件数制限なし）
+  // ただし今日より8週以上前の週は除外（古すぎる週は不要）
+  const today=new Date();
+  const cutoff=new Date(today);
+  cutoff.setDate(cutoff.getDate()-56); // 8週前
+  const cutoffWk=getWeekKey(cutoff);
+  const wks=[...submittedWks].sort().filter(w=>w>=cutoffWk);
   // デフォルトは今週（なければ最新週）
   const currWkDef=getCurrWk();
   if(!icWeekKey||!wks.includes(icWeekKey)){

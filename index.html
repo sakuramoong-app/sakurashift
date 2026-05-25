@@ -2061,8 +2061,7 @@ function showStaffPage(p){
 
 // ===== STATUS LIST (ステータス一覧) =====
 function renderStatusList(){
-  // 今週・来週の2週間のみ表示
-  // 今日から翌月末までの全週を生成
+  // 今日から翌月末 + 全提出週（過去分も含む）を表示
   let allWks=[];
   try{
     const today=new Date();
@@ -2074,10 +2073,20 @@ function renderStatusList(){
     start.setDate(start.getDate()-(dow===0?6:dow-1));
     start.setHours(0,0,0,0);
     const cur=new Date(start);
+    const wkSet=new Set();
+    // 今週〜翌月末
     while(cur<=nextMonthEnd){
-      allWks.push(getWeekKey(new Date(cur)));
+      wkSet.add(getWeekKey(new Date(cur)));
       cur.setDate(cur.getDate()+7);
     }
+    // 全提出週を追加（過去分も含む）
+    Object.keys(S.submissions).forEach(k=>{
+      const m=k.match(/_(\d{4}-\d{2}-\d{2})$/);
+      if(!m)return;
+      const [y,mo,d]=m[1].split('-').map(Number);
+      wkSet.add(getWeekKey(new Date(y,mo-1,d,12,0,0)));
+    });
+    allWks=[...wkSet].sort();
   }catch(e){allWks=[getCurrWk(),getNextWk()];}
   if(!allWks.length||!slWeekKey||!allWks.includes(slWeekKey)){try{slWeekKey=getCurrWk();}catch(e){slWeekKey='';}}
 
@@ -2311,13 +2320,10 @@ function renderInputCheck(){
   });
   // 今週・来週・翌々週も常に含める
   [getCurrWk(),getNextWk(),getNextNextWk()].forEach(w=>submittedWks.add(w));
-  // 全提出週を表示（件数制限なし）
-  // ただし今日より8週以上前の週は除外（古すぎる週は不要）
-  const today=new Date();
-  const cutoff=new Date(today);
-  cutoff.setDate(cutoff.getDate()-56); // 8週前
-  const cutoffWk=getWeekKey(cutoff);
-  const wks=[...submittedWks].sort().filter(w=>w>=cutoffWk);
+  // 今週以降 + 全提出週（過去分も含む）を表示
+  // 制限なし・容量への影響なし（表示ロジックのみ）
+  const currWkForFilter=getCurrWk();
+  const wks=[...submittedWks].sort();
   // デフォルトは今週（なければ最新週）
   const currWkDef=getCurrWk();
   if(!icWeekKey||!wks.includes(icWeekKey)){

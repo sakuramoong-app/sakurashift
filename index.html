@@ -2079,12 +2079,13 @@ function renderStatusList(){
       wkSet.add(getWeekKey(new Date(cur)));
       cur.setDate(cur.getDate()+7);
     }
-    // 全提出週を追加（過去分も含む）
+    // 全提出週を追加（今週以降のみ）
     Object.keys(S.submissions).forEach(k=>{
       const m=k.match(/_(\d{4}-\d{2}-\d{2})$/);
       if(!m)return;
       const [y,mo,d]=m[1].split('-').map(Number);
-      wkSet.add(getWeekKey(new Date(y,mo-1,d,12,0,0)));
+      const wk=getWeekKey(new Date(y,mo-1,d,12,0,0));
+      if(wk>=getWeekKey(today)) wkSet.add(wk);
     });
     allWks=[...wkSet].sort();
   }catch(e){allWks=[getCurrWk(),getNextWk()];}
@@ -2320,10 +2321,9 @@ function renderInputCheck(){
   });
   // 今週・来週・翌々週も常に含める
   [getCurrWk(),getNextWk(),getNextNextWk()].forEach(w=>submittedWks.add(w));
-  // 今週以降 + 全提出週（過去分も含む）を表示
-  // 制限なし・容量への影響なし（表示ロジックのみ）
+  // 今週以降 + 全提出週（今週以降のみ）を表示
   const currWkForFilter=getCurrWk();
-  const wks=[...submittedWks].sort();
+  const wks=[...submittedWks].sort().filter(w=>w>=currWkForFilter);
   // デフォルトは今週（なければ最新週）
   const currWkDef=getCurrWk();
   if(!icWeekKey||!wks.includes(icWeekKey)){

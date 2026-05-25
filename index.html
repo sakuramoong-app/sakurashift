@@ -2201,26 +2201,39 @@ function renderStatusList(){
   if(!castList.length){
     html+=`<p style="color:var(--text2);font-size:13px;padding:8px 0">該当するキャストはいません</p>`;
   } else {
-    castList.forEach((u,i)=>{
-      const sub=S.submissions[u.name+'_'+slWeekKey];
-      const idx=S.castList.indexOf(u);
-      html+=`<div class="cast-row" style="padding:8px 0;border-bottom:1px solid var(--border)">
-        <div style="display:flex;align-items:center;gap:8px;flex:1;min-width:0">
-          <div class="cast-avatar ${AVC[idx%5]}" style="width:28px;height:28px;font-size:11px;flex-shrink:0">${u.name[0]}</div>
-          <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;min-width:0">
-            <span style="font-weight:700;font-size:14px;cursor:pointer;color:var(--navy);text-decoration:underline;text-underline-offset:3px;white-space:nowrap"
-              onclick="jumpToInputCheck('${u.name}','${slWeekKey}')">${u.name}</span>
-            ${sub
-              ?`<span class="badge ${bMap[sub.status]||'badge-gray'}" style="font-size:11px">${sMap[sub.status]||sub.status}</span>`
-              :`<span class="badge badge-danger" style="font-size:11px">未提出</span>`}
+    // グループ別カード型グリッド
+    const groups=KANA_GROUPS.map(g=>({
+      ...g,
+      members:castList.filter(u=>g.chars.includes(u.name[0]))
+    })).filter(g=>g.members.length>0);
+    const others=castList.filter(u=>!KANA_GROUPS.some(g=>g.chars.includes(u.name[0])));
+    if(others.length) groups.push({label:'その他',members:others});
+
+    html+=`<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px">`;
+    groups.forEach(g=>{
+      html+=`<div style="background:#f8fafc;border:1px solid var(--border);border-radius:10px;padding:8px 10px">
+        <div style="font-size:11px;font-weight:700;color:var(--text2);margin-bottom:6px;padding-bottom:4px;border-bottom:1px solid var(--border)">${g.label}行（${g.members.length}名）</div>`;
+      g.members.forEach(u=>{
+        const sub=S.submissions[u.name+'_'+slWeekKey];
+        const idx=S.castList.indexOf(u);
+        html+=`<div style="display:flex;align-items:center;gap:6px;padding:5px 0;border-bottom:1px solid #f0f0f0">
+          <div class="cast-avatar ${AVC[idx%5]}" style="width:24px;height:24px;font-size:10px;flex-shrink:0">${u.name[0]}</div>
+          <div style="flex:1;min-width:0">
+            <div style="display:flex;align-items:center;gap:4px;flex-wrap:wrap">
+              <span style="font-weight:700;font-size:13px;cursor:pointer;color:var(--navy);text-decoration:underline;text-underline-offset:2px;white-space:nowrap"
+                onclick="jumpToInputCheck('${u.name}','${slWeekKey}')">${u.name}</span>
+              ${sub
+                ?`<span class="badge ${bMap[sub.status]||'badge-gray'}" style="font-size:10px;padding:1px 5px">${sMap[sub.status]||sub.status}</span>`
+                :`<span class="badge badge-danger" style="font-size:10px;padding:1px 5px">未提出</span>`}
+            </div>
+            ${sub?.submittedAt?`<div style="font-size:9px;color:var(--text2)">提出:${sub.submittedAt}</div>`:''}
+            ${sub?.confirmedAt?`<div style="font-size:9px;color:var(--text2)">確定:${sub.confirmedAt}</div>`:''}
           </div>
-        </div>
-        ${sub?.submittedAt||sub?.confirmedAt?`<div style="font-size:10px;color:var(--text2);text-align:right;flex-shrink:0">
-          ${sub?.submittedAt?`提出:${sub.submittedAt}`:''}
-          ${sub?.confirmedAt?`<br>確定:${sub.confirmedAt}`:''}
-        </div>`:''}
-      </div>`;
+        </div>`;
+      });
+      html+=`</div>`;
     });
+    html+=`</div>`;
   }
   html+=`</div>`;
 
@@ -3969,72 +3982,132 @@ function resetEverything(){
 
 function renderLogs(){
   if(!S.operationLog)S.operationLog=[];
-  const typeLabel={
-    submit:'📤 提出',check:'✅ チェック',confirm:'🔄 更新',
-    change_unlock:'🔓 変更許可',change_submit:'📤 変更提出',change_confirm:'✅ 変更確定',
-    status:'📊 ステータス変更'
-  };
-  const typeBadge={
-    submit:'badge-warning',check:'badge-info',confirm:'badge-success',
-    change_unlock:'badge-purple',change_submit:'badge-danger',change_confirm:'badge-success'
-  };
-
-  // フィルター
-  const logTypes=[
-    {key:'all',label:'すべて'},
-    {key:'submit',label:'提出'},
-    {key:'confirm',label:'更新'},
-    {key:'change_unlock',label:'変更許可'},
-    {key:'change_submit',label:'変更提出'},
-  ];
+  if(!window.logTab)window.logTab='submit_history';
   if(!window.logFilter)window.logFilter='all';
   if(!window.logCastFilter)window.logCastFilter='';
 
-  const filtered=S.operationLog.filter(l=>{
-    if(window.logFilter!=='all'&&l.type!==window.logFilter)return false;
-    if(window.logCastFilter&&!l.castName.includes(window.logCastFilter))return false;
-    return true;
-  });
+  let html=`<div style="display:flex;gap:0;margin-bottom:12px;border-bottom:2px solid var(--border)">
+    <button onclick="window.logTab='submit_history';renderLogs()" style="padding:8px 16px;font-size:13px;font-weight:700;border:none;background:${window.logTab==='submit_history'?'var(--navy)':'#f8fafc'};color:${window.logTab==='submit_history'?'#fff':'var(--text2)'};border-radius:8px 8px 0 0;cursor:pointer">📤 提出履歴</button>
+    <button onclick="window.logTab='op_log';renderLogs()" style="padding:8px 16px;font-size:13px;font-weight:700;border:none;background:${window.logTab==='op_log'?'var(--navy)':'#f8fafc'};color:${window.logTab==='op_log'?'#fff':'var(--text2)'};border-radius:8px 8px 0 0;cursor:pointer;margin-left:4px">📋 操作ログ</button>
+  </div>`;
 
-  const castOpts=[...new Set(S.operationLog.map(l=>l.castName))].sort((a,b)=>a.localeCompare(b,'ja'));
-
-  let html=`<div class="card">
-    <div class="card-title"><span class="ct-icon ct-teal">📋</span>操作ログ（${filtered.length}件）</div>
-    <div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap;align-items:center">
-      <select class="form-select" style="width:auto" onchange="window.logFilter=this.value;renderLogs()">
-        ${logTypes.map(t=>`<option value="${t.key}" ${window.logFilter===t.key?'selected':''}>${t.label}</option>`).join('')}
-      </select>
-      <input type="text" class="form-input" placeholder="🔍 キャスト名" style="width:120px" value="${window.logCastFilter}"
-        oninput="window.logCastFilter=this.value;renderLogs()">
-      <button class="btn btn-outline btn-sm" onclick="if(confirm('ログを全件削除しますか？')){S.operationLog=[];saveState(false);renderLogs();}">🗑️ クリア</button>
-    </div>`;
-
-  if(!filtered.length){
-    html+=`<p style="color:var(--text2);font-size:13px;padding:8px 0">ログがありません</p>`;
-  } else {
-    html+=`<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px">
-      <thead><tr>
-        <th style="background:var(--navy);color:rgba(255,255,255,.8);padding:7px 8px;text-align:left;white-space:nowrap">日時</th>
-        <th style="background:var(--navy);color:rgba(255,255,255,.8);padding:7px 8px;white-space:nowrap">種別</th>
-        <th style="background:var(--navy);color:rgba(255,255,255,.8);padding:7px 8px;white-space:nowrap">キャスト</th>
-        <th style="background:var(--navy);color:rgba(255,255,255,.8);padding:7px 8px;white-space:nowrap">週</th>
-        <th style="background:var(--navy);color:rgba(255,255,255,.8);padding:7px 8px">詳細</th>
-        <th style="background:var(--navy);color:rgba(255,255,255,.8);padding:7px 8px;white-space:nowrap">担当</th>
-      </tr></thead><tbody>`;
-    filtered.forEach((l,i)=>{
-      const bg=i%2===0?'#fff':'#f8fafc';
-      html+=`<tr style="background:${bg}">
-        <td style="padding:6px 8px;border-bottom:1px solid var(--border);white-space:nowrap;font-size:11px;color:var(--text2)">${l.time}</td>
-        <td style="padding:6px 8px;border-bottom:1px solid var(--border);white-space:nowrap"><span class="badge ${typeBadge[l.type]||'badge-gray'}" style="font-size:10px">${typeLabel[l.type]||l.type}</span></td>
-        <td style="padding:6px 8px;border-bottom:1px solid var(--border);font-weight:700">${l.castName||'—'}</td>
-        <td style="padding:6px 8px;border-bottom:1px solid var(--border);font-size:11px;white-space:nowrap">${l.wk?getWeekLabel(l.wk):''}</td>
-        <td style="padding:6px 8px;border-bottom:1px solid var(--border);font-size:11px">${escHtml(l.detail||'')}</td>
-        <td style="padding:6px 8px;border-bottom:1px solid var(--border);font-size:11px;color:var(--text2)">${l.staff||'—'}</td>
-      </tr>`;
+  if(window.logTab==='submit_history'){
+    // submissionsから提出履歴を生成（既存データを読むだけ・保存なし）
+    const rows=[];
+    Object.entries(S.submissions).forEach(([k,sub])=>{
+      if(!sub)return;
+      // キー形式: キャスト名_YYYY-MM-DD
+      const uscIdx=k.lastIndexOf('_');
+      const castName=k.slice(0,uscIdx);
+      const wk=k.slice(uscIdx+1);
+      if(sub.submittedAt){
+        rows.push({castName,wk,time:sub.submittedAt,type:'submit',status:sub.status});
+      }
+      if(sub.changeSubmittedAt){
+        rows.push({castName,wk,time:sub.changeSubmittedAt,type:'change_submit',status:sub.status});
+      }
+      if(sub.confirmedAt){
+        rows.push({castName,wk,time:sub.confirmedAt,type:'confirm',status:sub.status,staff:sub.confirmedBy||''});
+      }
     });
-    html+=`</tbody></table></div>`;
+    // 新しい順
+    rows.sort((a,b)=>b.time.localeCompare(a.time));
+
+    const statusBadge={submit:'badge-warning',change_submit:'badge-danger',confirm:'badge-success'};
+    const statusLabel={submit:'📤 提出',change_submit:'🔄 変更提出',confirm:'✅ 確定'};
+
+    // キャスト絞り込み
+    const filtered=rows.filter(r=>!window.logCastFilter||r.castName.includes(window.logCastFilter));
+
+    html+=`<div class="card">
+      <div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap;align-items:center">
+        <input type="text" class="form-input" placeholder="🔍 キャスト名で絞り込み" style="width:160px" value="${window.logCastFilter}"
+          oninput="window.logCastFilter=this.value;renderLogs()">
+        <span style="font-size:12px;color:var(--text2)">${filtered.length}件</span>
+      </div>`;
+
+    if(!filtered.length){
+      html+=`<p style="color:var(--text2);font-size:13px;padding:8px 0">提出履歴がありません</p>`;
+    } else {
+      html+=`<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px">
+        <thead><tr>
+          <th style="background:var(--navy);color:rgba(255,255,255,.8);padding:7px 8px;text-align:left;white-space:nowrap">日時</th>
+          <th style="background:var(--navy);color:rgba(255,255,255,.8);padding:7px 8px;white-space:nowrap">種別</th>
+          <th style="background:var(--navy);color:rgba(255,255,255,.8);padding:7px 8px;white-space:nowrap">キャスト</th>
+          <th style="background:var(--navy);color:rgba(255,255,255,.8);padding:7px 8px;white-space:nowrap">週</th>
+          <th style="background:var(--navy);color:rgba(255,255,255,.8);padding:7px 8px;white-space:nowrap">担当</th>
+        </tr></thead><tbody>`;
+      filtered.forEach((r,i)=>{
+        const bg=i%2===0?'#fff':'#f8fafc';
+        html+=`<tr style="background:${bg}">
+          <td style="padding:6px 8px;border-bottom:1px solid var(--border);white-space:nowrap;font-size:11px;color:var(--text2)">${r.time}</td>
+          <td style="padding:6px 8px;border-bottom:1px solid var(--border)"><span class="badge ${statusBadge[r.type]||'badge-gray'}" style="font-size:10px">${statusLabel[r.type]||r.type}</span></td>
+          <td style="padding:6px 8px;border-bottom:1px solid var(--border);font-weight:700">${r.castName}</td>
+          <td style="padding:6px 8px;border-bottom:1px solid var(--border);font-size:11px;white-space:nowrap">${r.wk?getWeekLabel(r.wk):''}</td>
+          <td style="padding:6px 8px;border-bottom:1px solid var(--border);font-size:11px;color:var(--text2)">${r.staff||'—'}</td>
+        </tr>`;
+      });
+      html+=`</tbody></table></div>`;
+    }
+    html+=`</div>`;
+
+  } else {
+    // 操作ログ（内勤操作のみ）
+    const typeLabel={
+      submit:'📤 提出',check:'✅ チェック',confirm:'🔄 更新',
+      change_unlock:'🔓 変更許可',change_submit:'📤 変更提出',change_confirm:'✅ 変更確定',
+      status:'📊 ステータス変更'
+    };
+    const typeBadge={
+      submit:'badge-warning',check:'badge-info',confirm:'badge-success',
+      change_unlock:'badge-purple',change_submit:'badge-danger',change_confirm:'badge-success'
+    };
+    const logTypes=[
+      {key:'all',label:'すべて'},{key:'submit',label:'提出'},{key:'confirm',label:'更新'},
+      {key:'change_unlock',label:'変更許可'},{key:'change_submit',label:'変更提出'},
+    ];
+    const filtered=S.operationLog.filter(l=>{
+      if(window.logFilter!=='all'&&l.type!==window.logFilter)return false;
+      if(window.logCastFilter&&!l.castName.includes(window.logCastFilter))return false;
+      return true;
+    });
+    html+=`<div class="card">
+      <div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap;align-items:center">
+        <select class="form-select" style="width:auto" onchange="window.logFilter=this.value;renderLogs()">
+          ${logTypes.map(t=>`<option value="${t.key}" ${window.logFilter===t.key?'selected':''}>${t.label}</option>`).join('')}
+        </select>
+        <input type="text" class="form-input" placeholder="🔍 キャスト名" style="width:120px" value="${window.logCastFilter}"
+          oninput="window.logCastFilter=this.value;renderLogs()">
+        <button class="btn btn-outline btn-sm" onclick="if(confirm('ログを全件削除しますか？')){S.operationLog=[];saveState(false);renderLogs();}">🗑️ クリア</button>
+        <span style="font-size:12px;color:var(--text2)">${filtered.length}件</span>
+      </div>`;
+    if(!filtered.length){
+      html+=`<p style="color:var(--text2);font-size:13px;padding:8px 0">ログがありません</p>`;
+    } else {
+      html+=`<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px">
+        <thead><tr>
+          <th style="background:var(--navy);color:rgba(255,255,255,.8);padding:7px 8px;text-align:left;white-space:nowrap">日時</th>
+          <th style="background:var(--navy);color:rgba(255,255,255,.8);padding:7px 8px;white-space:nowrap">種別</th>
+          <th style="background:var(--navy);color:rgba(255,255,255,.8);padding:7px 8px;white-space:nowrap">キャスト</th>
+          <th style="background:var(--navy);color:rgba(255,255,255,.8);padding:7px 8px;white-space:nowrap">週</th>
+          <th style="background:var(--navy);color:rgba(255,255,255,.8);padding:7px 8px">詳細</th>
+          <th style="background:var(--navy);color:rgba(255,255,255,.8);padding:7px 8px;white-space:nowrap">担当</th>
+        </tr></thead><tbody>`;
+      filtered.forEach((l,i)=>{
+        const bg=i%2===0?'#fff':'#f8fafc';
+        html+=`<tr style="background:${bg}">
+          <td style="padding:6px 8px;border-bottom:1px solid var(--border);white-space:nowrap;font-size:11px;color:var(--text2)">${l.time}</td>
+          <td style="padding:6px 8px;border-bottom:1px solid var(--border);white-space:nowrap"><span class="badge ${typeBadge[l.type]||'badge-gray'}" style="font-size:10px">${typeLabel[l.type]||l.type}</span></td>
+          <td style="padding:6px 8px;border-bottom:1px solid var(--border);font-weight:700">${l.castName||'—'}</td>
+          <td style="padding:6px 8px;border-bottom:1px solid var(--border);font-size:11px;white-space:nowrap">${l.wk?getWeekLabel(l.wk):''}</td>
+          <td style="padding:6px 8px;border-bottom:1px solid var(--border);font-size:11px">${escHtml(l.detail||'')}</td>
+          <td style="padding:6px 8px;border-bottom:1px solid var(--border);font-size:11px;color:var(--text2)">${l.staff||'—'}</td>
+        </tr>`;
+      });
+      html+=`</tbody></table></div>`;
+    }
+    html+=`</div>`;
   }
-  html+=`</div>`;
   document.getElementById('mainContent').innerHTML=html;
 }
 

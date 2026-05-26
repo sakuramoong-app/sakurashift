@@ -2499,7 +2499,10 @@ function renderInputCheckBody(){
           <span class="badge ${sBadge[sub.status]||'badge-gray'}">${sMap[sub.status]||sub.status}</span>
           ${S.castFixedMemo&&S.castFixedMemo[u.name]?`<span style="font-size:10px;color:#0284c7;background:#e0f2fe;border-radius:10px;padding:1px 8px">📌 ${escHtml(S.castFixedMemo[u.name].slice(0,20))}${S.castFixedMemo[u.name].length>20?'...':''}</span>`:''}
         </div>
-        <button class="btn btn-sm btn-primary" onclick="confShiftIC('${u.name}','${icWeekKey}')" title="更新">🔄 更新</button>
+        <div style="display:flex;gap:6px;align-items:center">
+          <button class="btn btn-sm btn-outline" onclick="icBulkCheckRemaining('${u.name}','${icWeekKey}')" title="未チェックの媒体をまとめてチェック" style="font-size:11px;white-space:nowrap">✅ 残り一括</button>
+          <button class="btn btn-sm btn-primary" onclick="confShiftIC('${u.name}','${icWeekKey}')" title="更新">🔄 更新</button>
+        </div>
       </div>
       <div style="margin-bottom:10px">
         <div style="display:flex;gap:8px;flex-wrap:wrap">
@@ -2801,8 +2804,35 @@ function icDoBulkCheck(castName,wk,ds,checked){
       cd.checked=false;cd.checkedBy='';cd.color='';
     }
   });
-  showSyncOverlay('反映中...');
-  saveState(false).then(()=>{hideSyncOverlay();renderInputCheckBody();});
+  saveState(false);renderInputCheckBody();
+}
+
+// 残り一括チェック（未チェックの媒体のみチェック）
+function icBulkCheckRemaining(castName,wk){
+  if(!currentStaffName){openInfoModal('⚠️ 先に入力者を選択してください');return;}
+  icSaveScrollPositions();
+  const stores=S.castStores[castName]||[];
+  const items=[...new Set(['記録簿',...stores])];
+  const dates=getWeekDates(wk);
+  let changed=0;
+  dates.forEach(ds=>{
+    const sh=S.shifts[castName+'_'+ds];
+    if(!sh||sh.start==null)return; // シフトなしはスキップ
+    items.forEach(it=>{
+      const cdKey=castName+'_'+wk+'_'+ds+'_'+it;
+      if(!S.checkData[cdKey])S.checkData[cdKey]={checked:false,checkedBy:'',color:''};
+      const cd=S.checkData[cdKey];
+      if(!cd.checked){
+        cd.checked=true;
+        cd.checkedBy=currentStaffName;
+        const st=S.staffList.find(s=>s.name===currentStaffName);
+        cd.color=st?st.color:'';
+        changed++;
+      }
+    });
+  });
+  if(changed===0){openInfoModal('未チェックの媒体はありませんでした');return;}
+  saveState(false);renderInputCheckBody();
 }
 
 // Enter/Tab キーボードナビゲーション

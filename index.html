@@ -2204,8 +2204,8 @@ function renderStatusList(){
     if(jumpGroups.length>0||hasOther){
       html+=`<div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:10px;padding:6px 8px;background:#f8fafc;border-radius:8px;border:1px solid var(--border)">
         <span style="font-size:10px;color:var(--text2);font-weight:600;align-self:center;margin-right:2px">ジャンプ：</span>
-        ${jumpGroups.map(g=>`<a href="#sl-group-${g.label}" onclick="event.preventDefault();document.getElementById('sl-group-${g.label}')?.scrollIntoView({behavior:'smooth',block:'start'})" style="font-size:11px;font-weight:700;color:var(--navy);padding:2px 8px;background:#fff;border:1px solid var(--border);border-radius:12px;cursor:pointer;text-decoration:none">${g.label}行</a>`).join('')}
-        ${hasOther?`<a href="#sl-group-その他" onclick="event.preventDefault();document.getElementById('sl-group-その他')?.scrollIntoView({behavior:'smooth',block:'start'})" style="font-size:11px;font-weight:700;color:var(--navy);padding:2px 8px;background:#fff;border:1px solid var(--border);border-radius:12px;cursor:pointer;text-decoration:none">その他</a>`:''}
+        ${jumpGroups.map(g=>`<a href="#sl-group-${g.label}" onclick="event.preventDefault();(()=>{const el=document.getElementById('sl-group-${g.label}');if(!el)return;const offset=el.getBoundingClientRect().top+window.scrollY-200;window.scrollTo({top:offset,behavior:'smooth'});})()" style="font-size:11px;font-weight:700;color:var(--navy);padding:2px 8px;background:#fff;border:1px solid var(--border);border-radius:12px;cursor:pointer;text-decoration:none">${g.label}行</a>`).join('')}
+        ${hasOther?`<a href="#sl-group-その他" onclick="event.preventDefault();(()=>{const el=document.getElementById('sl-group-その他');if(!el)return;const offset=el.getBoundingClientRect().top+window.scrollY-200;window.scrollTo({top:offset,behavior:'smooth'});})()" style="font-size:11px;font-weight:700;color:var(--navy);padding:2px 8px;background:#fff;border:1px solid var(--border);border-radius:12px;cursor:pointer;text-decoration:none">その他</a>`:''}
       </div>`;
     }
   }
@@ -2226,7 +2226,7 @@ function renderStatusList(){
     groups.forEach((g,gi)=>{
       html+=`<div style="margin-bottom:10px">
         <div id="sl-group-${g.label}" style="font-size:13px;font-weight:800;color:#4a4080;background:#e6e6fa;margin-bottom:6px;padding:3px 12px;border-radius:20px;display:inline-block">${g.label}行</div>
-        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:4px">`;
+        <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:4px">`;
       g.members.forEach(u=>{
         const sub=S.submissions[u.name+'_'+slWeekKey];
         const idx=S.castList.indexOf(u);

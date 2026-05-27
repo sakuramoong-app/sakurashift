@@ -434,18 +434,31 @@ function getGroupForName(name){
 
 
 // ===== ログ機能 =====
+// GASに保存するログの種別
+const LOG_SAVE_TO_GAS=['confirm','change_unlock','notice','settings','staff_shift'];
+
 function addLog(type, castName, wk, detail){
   if(!S.operationLog)S.operationLog=[];
-  S.operationLog.unshift({
+  const entry={
     time: new Date().toLocaleString('ja-JP'),
-    type,       // 'submit','check','confirm','change_unlock','change_submit','change_confirm','status'
-    castName,
-    wk,
-    detail,
+    type,
+    castName: castName||'',
+    wk: wk||'',
+    detail: detail||'',
     staff: currentStaffName||currentUser?.name||''
-  });
-  // 最大500件
+  };
+  S.operationLog.unshift(entry);
   if(S.operationLog.length>500)S.operationLog=S.operationLog.slice(0,500);
+
+  // 重要操作のみGASのlogsシートに即時保存
+  if(LOG_SAVE_TO_GAS.includes(type)&&GAS_URL){
+    const body=new FormData();
+    body.append('action','addLog');
+    body.append('token','sakura2025shift');
+    body.append('data',JSON.stringify(entry));
+    fetch(GAS_URL,{method:'POST',body})
+      .catch(e=>console.warn('log save failed',e));
+  }
 }
 // ===== グローバルステータス定義（全画面共通）=====
 const STATUS_LABEL={
@@ -517,7 +530,7 @@ const AVC=['av-0','av-1','av-2','av-3','av-4'];
 function avc(n){const i=(S.castList||[]).findIndex(u=>u.name===n);return AVC[i>=0?i%5:0];}
 
 // ===== STATE =====
-const GAS_URL='https://script.google.com/macros/s/AKfycbwCs9ZQbqXBaYt5sZx4z8VPLaAh7zoizFLUdmIX6v5sAtbAA09dUJzSYpafOfZmUVNW/exec';
+const GAS_URL='https://script.google.com/macros/s/AKfycbxmuMwp5Ux-2Cytp6pR7qx6FZLbwtT1tTfXEGn_8l2QBi19j88cG7Le5nao__a_Lyek/exec';
 let S=initState(); // 初期値（GASロード前）
 let gasLoaded=false;
 
@@ -3805,6 +3818,7 @@ function saveAllSettings(){
   // 内勤PW
   const pwEl=document.getElementById('staffPwInput');
   if(pwEl&&pwEl.value.trim()) S.staffPw=String(pwEl.value.trim());
+  addLog('settings','','','マスタ設定保存');
   saveState(false);
   openInfoModal('✅ マスタ設定を保存しました');
 }
@@ -3970,6 +3984,7 @@ function saveNotice(){
     setNoticeImage('global',window._pendingNoticeImage);
     window._pendingNoticeImage=null;
   }
+  addLog('notice','','','全体お知らせ更新');
   saveState(false);openInfoModal('全体お知らせを保存しました！',renderNoticeAdmin);
 }
 function clearNotice(){
@@ -3989,6 +4004,7 @@ function savePersonalNoticeBulk(){
     if(window._pendingPersonalImage) setNoticeImage('personal_'+name,window._pendingPersonalImage);
   });
   window._pendingPersonalImage=null;
+  addLog('notice','','',`個別お知らせ送信：${targets.join('・')}`);
   saveState(false);
   openInfoModal(`✅ ${targets.join('・')} へのお知らせを送信しました！`,renderNoticeAdmin);
 }
@@ -4170,7 +4186,8 @@ function renderLogs(){
     html+=`</div>`;
 
   } else {
-    // 操作ログ（内勤操作のみ）
+    // 操作ログ：GASから最新ログを読み込んでlocalStorageとマージ
+    const renderOpLog=(gasLogs)=>{
     const typeLabel={
       submit:'📤 提出',check:'✅ チェック',confirm:'🔄 更新',
       change_unlock:'🔓 変更許可',change_submit:'📤 変更提出',change_confirm:'✅ 変更確定',
@@ -4225,6 +4242,28 @@ function renderLogs(){
       html+=`</tbody></table></div>`;
     }
     html+=`</div>`;
+    }; // end renderOpLog
+
+    // GASからログを取得してマージ
+    if(GAS_URL){
+      fetch(GAS_URL+'?action=getLogs&token=sakura2025shift')
+        .then(r=>r.json())
+        .then(result=>{
+          const gasLogs=result.logs||[];
+          // localStorageのログとGASログをマージ（重複除去）
+          const allLogs=[...gasLogs];
+          (S.operationLog||[]).forEach(l=>{
+            if(!allLogs.some(g=>g.time===l.time&&g.type===l.type&&g.castName===l.castName)){
+              allLogs.push(l);
+            }
+          });
+          allLogs.sort((a,b)=>b.time.localeCompare(a.time));
+          renderOpLog(allLogs);
+        })
+        .catch(()=>renderOpLog(S.operationLog||[]));
+    } else {
+      renderOpLog(S.operationLog||[]);
+    }
   }
   document.getElementById('mainContent').innerHTML=html;
 }
@@ -4452,6 +4491,8 @@ function saveStaffShiftFromModal(ds,sname){
 }
 
 function saveStaffShift(ds,sname,start,end,memo){
+  const _action=start==null?'削除':'保存';
+  addLog('staff_shift',sname,'',`内勤シフト${_action}：${ds} ${sname}`);
   if(!S.staffShifts)S.staffShifts={};
   const key=sname+'_'+ds;
   if(start==null){delete S.staffShifts[key];}

@@ -4267,11 +4267,9 @@ function renderLogs(){
             }
           });
           allLogs.sort((a,b)=>b.time.localeCompare(a.time));
-          const card=document.querySelector('#mainContent .card');
-          if(card) card.outerHTML=buildLogHtml(allLogs);
-          else document.getElementById('mainContent').innerHTML=buildLogHtml(allLogs);
-          const msg=document.getElementById('logLoadingMsg');
-          if(msg) msg.remove();
+          // DOMを直接更新
+          const mc=document.getElementById('mainContent');
+          if(mc) mc.innerHTML=buildLogHtml(allLogs);
         })
         .catch(()=>{
           const msg=document.getElementById('logLoadingMsg');

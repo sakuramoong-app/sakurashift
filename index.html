@@ -2182,7 +2182,27 @@ function renderStatusList(){
     let cnt=0;
     if(f.key==='all') cnt=S.castList.length;
     else if(f.key==='unsubmitted') cnt=S.castList.filter(u=>!S.submissions[u.name+'_'+slWeekKey]).length;
-    else if(f.key==='today_input') cnt=castList.length; // 既に計算済み
+    else if(f.key==='today_input'){
+      // castList生成前なので直接計算
+      cnt=S.castList.filter(u=>{
+        const _td2=new Date();_td2.setHours(0,0,0,0);
+        const _ld2=new Date(_td2);_ld2.setDate(_ld2.getDate()+14);
+        const _st2=['waiting','inputting','change_submitted','change_inputting'];
+        return Object.entries(S.submissions).some(([k,sub])=>{
+          if(!k.startsWith(u.name+'_'))return false;
+          if(!_st2.includes(sub.status))return false;
+          const _wk2=k.slice(u.name.length+1);
+          return getWeekDates(_wk2).some(ds=>{
+            const _d2=new Date(ds);_d2.setHours(0,0,0,0);
+            if(_d2<_td2||_d2>_ld2)return false;
+            const _sh2=S.shifts[u.name+'_'+ds];
+            if(!_sh2||_sh2.start==null)return false;
+            const _items2=[...new Set(['記録簿',...(S.castStores[u.name]||[])])];
+            return _items2.some(it=>{const cd=S.checkData[u.name+'_'+_wk2+'_'+ds+'_'+it];return!cd||!cd.checked;});
+          });
+        });
+      }).length;
+    }
     else cnt=S.castList.filter(u=>{const s=S.submissions[u.name+'_'+slWeekKey];return s&&s.status===f.key;}).length;
     html+=`<button onclick="slFilter='${f.key}';renderStatusList()"
       style="padding:5px 12px;border-radius:20px;border:2px solid ${slFilter===f.key?'var(--pink)':'var(--border)'};background:${slFilter===f.key?'#fdf2f8':'#fff'};font-size:12px;font-weight:${slFilter===f.key?'700':'500'};cursor:pointer;color:${slFilter===f.key?'var(--pink)':'var(--text2)'};transition:all .15s">

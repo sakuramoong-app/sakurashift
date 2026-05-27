@@ -2140,6 +2140,7 @@ function renderStatusList(){
     {key:'change_inputting',label:'変更入力中',badge:'badge-info'},
     {key:'change_confirmed',label:'変更確定',badge:'badge-success'},
     {key:'unsubmitted',label:'未提出',    badge:'badge-danger'},
+    {key:'today_input', label:'📅 本日入力可能', badge:'badge-info'},
   ];
 
   const statusDescList=[
@@ -2181,6 +2182,7 @@ function renderStatusList(){
     let cnt=0;
     if(f.key==='all') cnt=S.castList.length;
     else if(f.key==='unsubmitted') cnt=S.castList.filter(u=>!S.submissions[u.name+'_'+slWeekKey]).length;
+    else if(f.key==='today_input') cnt=castList.length; // 既に計算済み
     else cnt=S.castList.filter(u=>{const s=S.submissions[u.name+'_'+slWeekKey];return s&&s.status===f.key;}).length;
     html+=`<button onclick="slFilter='${f.key}';renderStatusList()"
       style="padding:5px 12px;border-radius:20px;border:2px solid ${slFilter===f.key?'var(--pink)':'var(--border)'};background:${slFilter===f.key?'#fdf2f8':'#fff'};font-size:12px;font-weight:${slFilter===f.key?'700':'500'};cursor:pointer;color:${slFilter===f.key?'var(--pink)':'var(--text2)'};transition:all .15s">
@@ -2190,9 +2192,35 @@ function renderStatusList(){
   html+=`</div></div>`;
 
   // フィルター適用済みキャストリスト
+  // 本日から14日以内の日付リストを生成
+  const _todayDate=new Date();_todayDate.setHours(0,0,0,0);
+  const _limitDate=new Date(_todayDate);_limitDate.setDate(_limitDate.getDate()+14);
+  const _todayInputStatuses=['waiting','inputting','change_submitted','change_inputting'];
+
   let castList=[...S.castList].sort((a,b)=>a.name.localeCompare(b.name,'ja')).filter((u,i)=>{
     if(slFilter==='all')return true;
     if(slFilter==='unsubmitted')return!S.submissions[u.name+'_'+slWeekKey];
+    if(slFilter==='today_input'){
+      // 全週を対象に「今日〜14日以内に未チェックの日がある」キャストを抽出
+      return Object.entries(S.submissions).some(([k,sub])=>{
+        if(!k.startsWith(u.name+'_'))return false;
+        if(!_todayInputStatuses.includes(sub.status))return false;
+        const wk=k.slice(u.name.length+1);
+        const dates=getWeekDates(wk);
+        return dates.some(ds=>{
+          const d=new Date(ds);d.setHours(0,0,0,0);
+          if(d<_todayDate||d>_limitDate)return false;
+          const sh=S.shifts[u.name+'_'+ds];
+          if(!sh||sh.start==null)return false;
+          const stores=S.castStores[u.name]||[];
+          const items=[...new Set(['記録簿',...stores])];
+          return items.some(it=>{
+            const cd=S.checkData[u.name+'_'+wk+'_'+ds+'_'+it];
+            return !cd||!cd.checked;
+          });
+        });
+      });
+    }
     const s=S.submissions[u.name+'_'+slWeekKey];
     return s&&s.status===slFilter;
   });
@@ -2237,9 +2265,32 @@ function renderStatusList(){
         html+=`<div style="background:#fff;border:1px solid var(--border);border-radius:7px;padding:6px 8px;cursor:pointer"
           onclick="jumpToInputCheck('${u.name}','${slWeekKey}')">
           <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:4px">
-            <div>
+            <div style="flex:1;min-width:0">
               <div style="font-weight:700;font-size:12px;color:var(--navy);text-decoration:underline;text-underline-offset:2px">${u.name}</div>
               <span class="badge ${badgeCls}" style="font-size:10px;padding:1px 5px;white-space:nowrap;margin-top:2px;display:inline-block">${statusTxt}</span>
+              ${slFilter==='today_input'?(()=>{
+                const _td=new Date();_td.setHours(0,0,0,0);
+                const _ld=new Date(_td);_ld.setDate(_ld.getDate()+14);
+                const _inputDates=[];
+                Object.entries(S.submissions).forEach(([k,s])=>{
+                  if(!k.startsWith(u.name+'_'))return;
+                  if(!_todayInputStatuses.includes(s.status))return;
+                  const _wk=k.slice(u.name.length+1);
+                  getWeekDates(_wk).forEach(ds=>{
+                    const _d=new Date(ds);_d.setHours(0,0,0,0);
+                    if(_d<_td||_d>_ld)return;
+                    const _sh=S.shifts[u.name+'_'+ds];
+                    if(!_sh||_sh.start==null)return;
+                    const _stores=S.castStores[u.name]||[];
+                    const _items=[...new Set(['記録簿',..._stores])];
+                    const _hasUnchecked=_items.some(it=>{const cd=S.checkData[u.name+'_'+_wk+'_'+ds+'_'+it];return!cd||!cd.checked;});
+                    if(_hasUnchecked)_inputDates.push(ds);
+                  });
+                });
+                if(!_inputDates.length)return '';
+                const _fmt=ds=>{const d=new Date(ds);return `${d.getMonth()+1}/${d.getDate()}(${DOWNAMES[(d.getDay()+6)%7]})`;};
+                return `<div style="font-size:9px;color:#2563eb;margin-top:2px">📅 ${_inputDates.map(_fmt).join('・')}</div>`;
+              })():''}
               ${showRemind?`<label onclick="event.stopPropagation()" style="display:flex;align-items:center;gap:2px;margin-top:3px;font-size:9px;color:var(--text2);cursor:pointer"><input type="checkbox" ${isReminded?'checked':''} onchange="toggleReminded('${u.name}','${slWeekKey}',this.checked)" style="accent-color:var(--pink2);width:10px;height:10px">催促</label>`:''}
             </div>
             <div style="font-size:9px;color:var(--text2);text-align:right;flex-shrink:0;line-height:1.8">

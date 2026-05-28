@@ -4114,6 +4114,23 @@ function resetEverything(){
 }
 
 
+const LOG_TYPE_LABEL={
+  submit:'📤 提出',check:'✅ チェック',confirm:'🔄 更新',
+  change_unlock:'🔓 変更許可',change_submit:'📤 変更提出',change_confirm:'✅ 変更確定',
+  notice:'📢 お知らせ',settings:'⚙️ 設定',staff_shift:'🗓️ 内勤シフト',
+  status:'📊 ステータス変更'
+};
+const LOG_TYPE_BADGE={
+  submit:'badge-warning',check:'badge-info',confirm:'badge-success',
+  change_unlock:'badge-purple',change_submit:'badge-danger',change_confirm:'badge-success',
+  notice:'badge-info',settings:'badge-gray',staff_shift:'badge-gray'
+};
+const LOG_TYPES=[
+  {key:'all',label:'すべて'},{key:'confirm',label:'更新'},
+  {key:'change_unlock',label:'変更許可'},{key:'notice',label:'お知らせ'},
+  {key:'settings',label:'設定'},{key:'staff_shift',label:'内勤シフト'},
+];
+
 function buildLogHtml(logs){
   const filtered=logs.filter(l=>{
     if(window.logFilter!=='all'&&l.type!==window.logFilter)return false;
@@ -4123,7 +4140,7 @@ function buildLogHtml(logs){
   let h=`<div class="card">
     <div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap;align-items:center">
       <select class="form-select" style="width:auto" onchange="window.logFilter=this.value;renderLogs()">
-        ${logTypes.map(t=>`<option value="${t.key}" ${window.logFilter===t.key?'selected':''}>${t.label}</option>`).join('')}
+        ${LOG_TYPES.map(t=>`<option value="${t.key}" ${window.logFilter===t.key?'selected':''}>${t.label}</option>`).join('')}
       </select>
       <input type="text" class="form-input" placeholder="🔍 キャスト名" style="width:120px" value="${window.logCastFilter}"
         oninput="window.logCastFilter=this.value;renderLogs()">
@@ -4146,7 +4163,7 @@ function buildLogHtml(logs){
       const bg=i%2===0?'#fff':'#f8fafc';
       h+=`<tr style="background:${bg}">
         <td style="padding:6px 8px;border-bottom:1px solid var(--border);white-space:nowrap;font-size:11px;color:var(--text2)">${l.time||''}</td>
-        <td style="padding:6px 8px;border-bottom:1px solid var(--border);white-space:nowrap"><span class="badge ${typeBadge[l.type]||'badge-gray'}" style="font-size:10px">${typeLabel[l.type]||l.type}</span></td>
+        <td style="padding:6px 8px;border-bottom:1px solid var(--border);white-space:nowrap"><span class="badge ${LOG_TYPE_BADGE[l.type]||'badge-gray'}" style="font-size:10px">${LOG_TYPE_LABEL[l.type]||l.type}</span></td>
         <td style="padding:6px 8px;border-bottom:1px solid var(--border);font-weight:700">${l.castName||'—'}</td>
         <td style="padding:6px 8px;border-bottom:1px solid var(--border);font-size:11px;white-space:nowrap">${l.wk?getWeekLabel(l.wk):''}</td>
         <td style="padding:6px 8px;border-bottom:1px solid var(--border);font-size:11px">${escHtml(l.detail||'')}</td>
@@ -4232,22 +4249,7 @@ function renderLogs(){
 
   } else {
     // 操作ログ：先にページを描画してからGASログを非同期で取得
-    const typeLabel={
-      submit:'📤 提出',check:'✅ チェック',confirm:'🔄 更新',
-      change_unlock:'🔓 変更許可',change_submit:'📤 変更提出',change_confirm:'✅ 変更確定',
-      notice:'📢 お知らせ',settings:'⚙️ 設定',staff_shift:'🗓️ 内勤シフト',
-      status:'📊 ステータス変更'
-    };
-    const typeBadge={
-      submit:'badge-warning',check:'badge-info',confirm:'badge-success',
-      change_unlock:'badge-purple',change_submit:'badge-danger',change_confirm:'badge-success',
-      notice:'badge-info',settings:'badge-gray',staff_shift:'badge-gray'
-    };
-    const logTypes=[
-      {key:'all',label:'すべて'},{key:'confirm',label:'更新'},
-      {key:'change_unlock',label:'変更許可'},{key:'notice',label:'お知らせ'},
-      {key:'settings',label:'設定'},{key:'staff_shift',label:'内勤シフト'},
-    ];
+    // typeLabel/typeBadge/logTypes はグローバル定数を使用
 
 
     // まずlocalStorageのログで即表示

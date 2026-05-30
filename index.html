@@ -1871,9 +1871,41 @@ function openShiftModal(ds){
     <div class="modal-actions">
       ${sh.start!=null?`<button class="btn btn-danger btn-sm" onclick="delShift('${ds}')">削除</button>`:''}
       <button class="btn btn-outline" onclick="closeModal()">閉じる</button>
+      ${(()=>{
+        const _wkDs=getWeekKey(ds);
+        const _subDs=S.submissions[name+'_'+_wkDs];
+        const _isUnlocked=_subDs&&_subDs.status==='change_unlocked'&&_subDs.changedDates&&_subDs.changedDates.includes(ds);
+        return _isUnlocked?`<button class="btn btn-warning btn-sm" onclick="setHolidayShift('${ds}')">🚫 休日にする</button>`:'';
+      })()}
       <button class="btn btn-primary" onclick="saveShift('${ds}')">保存</button>
     </div>`);
 }
+// 変更許可中の日を休日として提出する
+function setHolidayShift(ds){
+  const name=currentUser.name;
+  const wk=getWeekKey(ds);
+  const sub=S.submissions[name+'_'+wk];
+  if(!sub||sub.status!=='change_unlocked'){
+    openInfoModal('この日は変更許可中ではありません');return;
+  }
+  // シフトを削除（休日）
+  delete S.shifts[name+'_'+ds];
+  // isHolidayChangeフラグを立てる
+  if(!sub.holidayChangeDates)sub.holidayChangeDates=[];
+  if(!sub.holidayChangeDates.includes(ds))sub.holidayChangeDates.push(ds);
+  // ステータスを変更提出に
+  sub.status='change_submitted';
+  sub.changeSubmittedAt=new Date().toLocaleString('ja-JP');
+  addLog('change_submit',name,wk,`休日変更提出：${ds}`);
+  closeModal();
+  showSyncOverlay('反映中...');
+  saveState(false).then(()=>{
+    hideSyncOverlay();
+    showToast('🚫 休日として提出しました。内勤の確認をお待ちください。');
+    renderCal();
+  });
+}
+
 function saveShift(ds){
   const name=currentUser.name,sv=parseInt(document.getElementById('mS').value),ev=parseInt(document.getElementById('mE').value);
   if(ev<=sv){openInfoModal('退勤時間は出勤より後にしてください');return;}
@@ -2655,6 +2687,7 @@ function renderInputCheckBody(){
       const noteVal=S.checkNotes[noteKey]||'';
       const dChangedDates=dsub.changedDates||[];
       const isChangedDay=(_pendingChanges[_pk]&&_pendingChanges[_pk].has(ds))||dChangedDates.includes(ds);
+      const isHolidayChange=(dsub.holidayChangeDates||[]).includes(ds);
       const isPending=_pendingChanges[_pk]&&_pendingChanges[_pk].has(ds);
 
       // この日のチェック状態分析（月表示時はdsWkを使用）
@@ -2668,7 +2701,11 @@ function renderInputCheckBody(){
 
       // 行ステータス判定
       let rowClass='',dayBadge='',dayBadgeCls='';
-      if(isChangedDay&&(dsub.status==='change_submitted'||dsub.status==='change_inputting')){
+      if(isChangedDay&&isHolidayChange&&(dsub.status==='change_submitted'||dsub.status==='change_inputting')){
+        // 休日変更提出
+        rowClass='ic-row-change-wait';
+        dayBadge='🚫 休日変更';dayBadgeCls='day-badge-change-wait';
+      } else if(isChangedDay&&(dsub.status==='change_submitted'||dsub.status==='change_inputting')){
         // 変更許可した日・再提出済み
         rowClass='ic-row-change-wait';
         dayBadge='変更入力待ち';dayBadgeCls='day-badge-change-wait';
@@ -2710,14 +2747,14 @@ function renderInputCheckBody(){
         const storeLabel=`<div style="font-size:8px;color:#1e2a3a;font-weight:600;margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:50px;text-align:center">${shortName(it)}</div>`;
         const isRestDay=!sh||sh.start==null;
         const isChangeUnlocked=sub&&sub.status==='change_unlocked'&&!isChangedDay;
-      const cellOnclick=(isRestDay||isChangedDay&&sub&&sub.status==='change_unlocked')?'':`onclick="icToggleCheck('${u.name}','${icWeekKey}','${ds}','${it}')"`;
+      const cellOnclick=(isRestDay||isChangedDay&&dsub&&dsub.status==='change_unlocked')?'':`onclick="icToggleCheck('${u.name}','${dsWk}','${ds}','${it}')"`;
         return `<td class="ic-check-cell ${cd.checked?'checked':''}" id="${cellId}"
           style="padding:3px 2px!important;min-width:52px;${_hist&&_hist.length>1?'width:auto;':'width:52px;'}${cellBg?`background:${cellBg};`:''}${borderCol};vertical-align:top;${isRestDay?'pointer-events:none;':''}"
           ${cellOnclick}>
           ${storeLabel}
-          <input type="checkbox" class="ic-checkbox" ${cd.checked?'checked':''} ${(isRestDay||(isChangedDay&&sub&&sub.status==='change_unlocked'))?'disabled':''}
+          <input type="checkbox" class="ic-checkbox" ${cd.checked?'checked':''} ${(isRestDay||(isChangedDay&&dsub&&dsub.status==='change_unlocked'))?'disabled':''}
             style="width:13px;height:13px;${isRestDay?'opacity:.4;cursor:default;':''}${chkColor?`accent-color:${chkColor}`:''}"
-            onkeydown="icCellKeyNav(event,'${u.name}','${ds}',${itmIdx},${items.length},'${icWeekKey}')">
+            onkeydown="icCellKeyNav(event,'${u.name}','${ds}',${itmIdx},${items.length},'${dsWk}')">
           ${chkDateLabel}
         </td>`;
       }
@@ -3140,6 +3177,22 @@ function confShiftIC(castName,wk){
   const items=[...new Set(['記録簿',...stores])];
   const items2=items; // checkedDates用エイリアス
   const dates=getWeekDates(wk);
+
+  // 休日変更の日チェック（チェックが残っていたら更新ブロック）
+  const holidayDates=(sub.holidayChangeDates||[]).filter(ds=>dates.includes(ds));
+  if(holidayDates.length>0){
+    const unclearedHolidays=holidayDates.filter(ds=>
+      items.some(it=>{
+        const cd=S.checkData[castName+'_'+wk+'_'+ds+'_'+it];
+        return cd&&cd.checked;
+      })
+    );
+    if(unclearedHolidays.length>0){
+      const labels=unclearedHolidays.map(d=>{const dt=new Date(d);return `${dt.getMonth()+1}/${dt.getDate()}`;}).join('・');
+      openInfoModal(`⚠️ ${labels} は休日変更です。チェックを外してから更新してください。`);
+      return;
+    }
+  }
 
   // シフトが入っている日のみを対象にチェック数を計算
   const shiftDates=dates.filter(ds=>{

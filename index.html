@@ -642,6 +642,9 @@ async function loadFromGAS(){
         S=migratedGas;
         S.operationLog=localData&&localData.operationLog||[];
         if(!S.checkData)S.checkData={};
+        // staffListがGASから消えた場合はlocalから復元
+        if(!S.staffList&&localData&&localData.staffList)S.staffList=localData.staffList;
+        if(!S.staffList)S.staffList=[];
         console.log('[loadFromGAS] GAS使用 shifts:'+gasShifts);
       }
     } else {
@@ -3505,6 +3508,8 @@ function renderHourly(){
 
 // ===== SETTINGS =====
 function renderSettings(){
+  if(!S.staffList)S.staffList=[];
+  if(!S.castList)S.castList=[];
   let html=``;
 
   // キャスト在籍追加・削除
@@ -4368,6 +4373,7 @@ function fmtShift(sh){
 }
 
 function renderStaffCal(){
+  if(!S.staffList)S.staffList=[];
   const today=new Date();
   const first=new Date(staffCalY,staffCalM,1);
   const last=new Date(staffCalY,staffCalM+1,0);

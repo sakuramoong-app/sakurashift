@@ -1188,7 +1188,7 @@ async function doLogin(){
     }
     // staffPwはGASレスポンスから除外されているためlocalStorageから取得
     const _localPw=(()=>{try{const _ls=localStorage.getItem('shiftSysV8');if(_ls){const _d=JSON.parse(_ls);if(_d.staffPw)return String(_d.staffPw).trim();}return null;}catch(e){return null;}})();
-    const _staffPw=_localPw||String(S.staffPw||'').trim();
+    const _staffPw=_localPw||String(S.staffPw||'').trim()||'0210'; // デフォルトPW
     if(pw.trim()!==_staffPw){
       sLock.count=(sLock.count||0)+1;
       if(sLock.count>=3){

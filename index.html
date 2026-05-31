@@ -1905,13 +1905,33 @@ function setHolidayShift(ds){
   sub.status='change_submitted';
   sub.changeSubmittedAt=new Date().toLocaleString('ja-JP');
   addLog('change_submit',name,wk,`休日変更提出：${ds}`);
+  // localStorageに保存
+  try{localStorage.setItem('shiftSysV8',JSON.stringify(S));}catch(e){}
   closeModal();
+  // GASにキャスト専用送信（休日提出もsaveCastSubmissionで送る）
+  const myShiftsForHoliday={};
+  Object.entries(S.shifts||{}).forEach(([k,v])=>{if(k.startsWith(name+'_')&&v!=null)myShiftsForHoliday[k]=v;});
+  const mySubsForHoliday={};
+  Object.entries(S.submissions||{}).forEach(([k,v])=>{if(k.startsWith(name+'_')&&v!=null)mySubsForHoliday[k]=v;});
   showSyncOverlay('反映中...');
-  saveState(false).then(()=>{
+  (async()=>{
+    if(GAS_URL&&Object.keys(mySubsForHoliday).length>0){
+      try{
+        const body=new FormData();
+        body.append('action','castSave');
+        body.append('token','sakura2025shift');
+        body.append('castName',name);
+        body.append('shifts',JSON.stringify(myShiftsForHoliday));
+        body.append('submissions',JSON.stringify(mySubsForHoliday));
+        const res=await fetch(GAS_URL,{method:'POST',body});
+        const result=await res.json();
+        if(result&&result.error)console.warn('holiday castSave error:',result.error);
+      }catch(e){console.warn('holiday castSave failed:',e);}
+    }
     hideSyncOverlay();
     showToast('🚫 休日として提出しました。内勤の確認をお待ちください。');
     renderCal();
-  });
+  })();
 }
 
 function saveShift(ds){

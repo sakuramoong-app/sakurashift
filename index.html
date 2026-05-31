@@ -2055,20 +2055,15 @@ async function saveCastSubmission(castName, weeks){
     console.warn('[castSave] submissions空のためスキップ');
     return;
   }
-  const payload={
-    action:'castSave',
-    token:'sakura2025shift',
-    castName,
-    shifts:myShifts,
-    submissions:mySubs
-  };
   try{
     showSyncOverlay('提出中...');
-    const res=await fetch(GAS_URL,{
-      method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body:JSON.stringify(payload)
-    });
+    const body=new FormData();
+    body.append('action','castSave');
+    body.append('token','sakura2025shift');
+    body.append('castName',castName);
+    body.append('shifts',JSON.stringify(myShifts));
+    body.append('submissions',JSON.stringify(mySubs));
+    const res=await fetch(GAS_URL,{method:'POST',body});
     const result=await res.json();
     hideSyncOverlay();
     if(result&&result.error){

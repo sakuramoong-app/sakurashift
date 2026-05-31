@@ -716,6 +716,8 @@ function saveState(showOverlay=true){
   }catch(e){console.warn('localStorage error:',e);}
 
   if(!GAS_URL){_isSaving=false;return Promise.resolve(false);}
+  // キャストはGASへの書き込み禁止（他キャストのデータを上書きしてしまうため）
+  if(currentType==='cast'){_isSaving=false;return Promise.resolve(false);}
   _isSaving=true;
   if(showOverlay) showSyncOverlay('保存中...');
 
@@ -2021,7 +2023,11 @@ function doSubmitShifts(){
     }
   });
 
-  saveState(); closeModal();
+  // localStorageには保存（キャスト自身の画面更新用）
+  try{localStorage.setItem('shiftSysV8',JSON.stringify(S));}catch(e){}
+  // GASにはキャスト専用のpartial saveで送信
+  saveCastSubmission(name, allWks);
+  closeModal();
 
   let toastMsg=`以下の週のシフトを提出しました！<br><br>`;
   if(normalWks.size>0) toastMsg+=[...normalWks].sort().map(wk=>`✅ ${getWeekLabel(wk)}`).join('<br>')+'<br>';
@@ -2029,6 +2035,51 @@ function doSubmitShifts(){
   toastMsg+='<br>内勤スタッフの確認をお待ちください 🙏';
   showToast(toastMsg);
   renderCal();
+}
+
+// キャスト提出専用：自分のシフトとsubmissionsのみGASに送る
+async function saveCastSubmission(castName, weeks){
+  if(!GAS_URL)return;
+  // 自分のシフトのみ抽出（null/undefinedは除外してデータ消失防止）
+  const myShifts={};
+  Object.entries(S.shifts||{}).forEach(([k,v])=>{
+    if(k.startsWith(castName+'_')&&v!=null)myShifts[k]=v;
+  });
+  // 自分のsubmissionsのみ抽出
+  const mySubs={};
+  Object.entries(S.submissions||{}).forEach(([k,v])=>{
+    if(k.startsWith(castName+'_')&&v!=null)mySubs[k]=v;
+  });
+  // 送るデータがない場合はスキップ
+  if(Object.keys(mySubs).length===0){
+    console.warn('[castSave] submissions空のためスキップ');
+    return;
+  }
+  const payload={
+    action:'castSave',
+    token:'sakura2025shift',
+    castName,
+    shifts:myShifts,
+    submissions:mySubs
+  };
+  try{
+    showSyncOverlay('提出中...');
+    const res=await fetch(GAS_URL,{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify(payload)
+    });
+    const result=await res.json();
+    hideSyncOverlay();
+    if(result&&result.error){
+      console.warn('castSave error:',result.error);
+      showToast('⚠️ 提出データの送信に失敗しました。再度お試しください。');
+    }
+  }catch(e){
+    hideSyncOverlay();
+    console.warn('castSave failed:',e);
+    showToast('⚠️ 提出データの送信に失敗しました。再度お試しください。');
+  }
 }
 
 function renderChangeReq(name){

@@ -2833,6 +2833,7 @@ function renderInputCheckBody(){
             :`<div style="font-size:11px;color:#94a3b8;margin-top:2px">—</div>`}
           ${sh&&sh.memo?`<div style="font-size:9px;color:var(--pink2);margin-top:1px;line-height:1.3;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:120px">📝${escHtml(sh.memo.length>15?sh.memo.slice(0,15)+'…':sh.memo)}</div>`:''}
           ${sub.checkedDates&&sub.checkedDates[ds]?`<div style="font-size:8px;color:#94a3b8;margin-top:2px;line-height:1.3">${typeof sub.checkedDates[ds]==="object"?sub.checkedDates[ds].datetime:sub.checkedDates[ds]}</div>`:''}
+          ${(isHolidayChange&&(dsub.status==='change_submitted'||dsub.status==='change_inputting'))?`<button onclick="icConfirmHoliday('${u.name}','${dsWk}','${ds}')" style="margin-top:4px;padding:2px 7px;font-size:10px;font-weight:700;background:#fee2e2;color:#991b1b;border:1px solid #fca5a5;border-radius:5px;cursor:pointer;display:block;width:100%">🚫 休日にする</button>`:''}
         </td>
         <td class="ic-bulk-cell" rowspan="2" style="padding:3px 2px!important;min-width:32px;border-right:1px solid var(--border)!important;vertical-align:middle">
           <input type="checkbox" title="一括チェック" ${allCheckedForDay?'checked':''} ${(!sh||sh.start==null)?'disabled':''}
@@ -3193,6 +3194,82 @@ function icSaveNote(noteKey,val){
   S.checkNotes[noteKey]=val;
   saveState(false);
 }
+// 内勤側：休日変更を確定する
+function icConfirmHoliday(castName, wk, ds) {
+  const k = castName + '_' + wk;
+  const sub = S.submissions[k];
+  if (!sub) { openInfoModal('提出データがありません'); return; }
+
+  // change_submitted / change_inputting のみ操作可
+  if (sub.status !== 'change_submitted' && sub.status !== 'change_inputting') {
+    openInfoModal('この操作は変更提出中のみ有効です');
+    return;
+  }
+
+  // holidayChangeDates に含まれているか確認
+  if (!(sub.holidayChangeDates || []).includes(ds)) {
+    openInfoModal('この日は休日変更提出ではありません');
+    return;
+  }
+
+  // チェックが残っていたらブロック
+  const stores = S.castStores[castName] || [];
+  const items = [...new Set(['記録簿', ...stores])];
+  const hasChecked = items.some(it => {
+    const cd = S.checkData[castName + '_' + wk + '_' + ds + '_' + it];
+    return cd && cd.checked;
+  });
+  if (hasChecked) {
+    const dt = new Date(ds);
+    openInfoModal(`⚠️ ${dt.getMonth()+1}/${dt.getDate()} はチェックが残っています。チェックを外してから休日にしてください。`);
+    return;
+  }
+
+  openConfirmModal(`${castName}さん ${(()=>{const dt=new Date(ds);return (dt.getMonth()+1)+'/'+dt.getDate();})()}（${['日','月','火','水','木','金','土'][new Date(ds).getDay()]}）を休日として確定しますか？`, () => {
+    // シフトデータを削除（休日）
+    delete S.shifts[castName + '_' + ds];
+
+    // 全週の休日変更が確定されたか確認
+    const allHolidayConfirmed = (sub.holidayChangeDates || []).every(hds => {
+      // まだシフトが残っている日があればfalse
+      return !S.shifts[castName + '_' + hds] || S.shifts[castName + '_' + hds].start == null;
+    });
+
+    // 全チェック完了 + 全休日確定なら change_confirmed へ
+    const dates = getWeekDates(wk);
+    const shiftDates = dates.filter(d => {
+      const sh = S.shifts[castName + '_' + d];
+      return sh && sh.start != null;
+    });
+    // 休日のみの週（シフト0件）も change_confirmed にできる
+    const targetDates = shiftDates.length > 0 ? shiftDates : [];
+    const totalChecks = targetDates.length * items.length;
+    const doneChecks = targetDates.reduce((acc, d) =>
+      acc + items.filter(it => {
+        const cd = S.checkData[castName + '_' + wk + '_' + d + '_' + it];
+        return cd && cd.checked;
+      }).length, 0);
+    const allDone = totalChecks === 0 || (totalChecks > 0 && doneChecks === totalChecks);
+
+    if (allDone) {
+      sub.status = 'change_confirmed';
+    }
+    // allDone でなければステータスはそのまま（change_submitted/change_inputting）
+    // 内勤が残りのチェックを完了してから更新ボタンで確定
+
+    sub.confirmedBy = currentStaffName || '内勤';
+    sub.confirmedAt = new Date().toLocaleString('ja-JP');
+    addLog('confirm', castName, wk, `休日確定：${ds}→${STATUS_LABEL[sub.status] || sub.status}`);
+
+    showSyncOverlay('保存中...');
+    saveState(false).then(() => {
+      hideSyncOverlay();
+      renderInputCheck();
+      openInfoModal(`🚫 ${castName}さんの休日を確定しました。`);
+    });
+  });
+}
+
 // 「確定」ボタン
 function confShiftIC(castName,wk){
   const k=castName+'_'+wk;

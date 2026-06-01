@@ -2798,7 +2798,7 @@ function renderInputCheckBody(){
       const _dp=ds.split('-');const d=new Date(+_dp[0],+_dp[1]-1,+_dp[2],12,0,0),dow=(d.getDay()+6)%7;
       const isSun=d.getDay()===0,isSat=d.getDay()===6,isHol=HOLIDAYS.includes(ds);
       const sh=S.shifts[u.name+'_'+ds];
-      const shiftLabel=sh&&sh.start!=null?fmtR(sh.start,sh.end):'';
+      const shiftLabel=sh&&sh.start!=null&&!isHolidayChange?fmtR(sh.start,sh.end):'';
       // 月表示時は日付ごとに正しい週キーを使う
       const dsWk=_castViewMode==='month'?getWeekKey(new Date(+_dp[0],+_dp[1]-1,+_dp[2],12,0,0)):icWeekKey;
       const dsub=S.submissions[u.name+'_'+dsWk]||{};
@@ -2895,9 +2895,11 @@ function renderInputCheckBody(){
         </td>
         <td class="ic-date-cell ${dateCls}" rowspan="2" style="position:sticky;left:116px;z-index:1;vertical-align:middle;text-align:center;min-width:88px;width:88px;border-right:2px solid var(--border)!important;padding:4px 3px!important">
           <div style="font-size:10px;font-weight:600;color:#1e2a3a">${d.getMonth()+1}/${d.getDate()}<span style="color:${(isSun||isHol)?'#dc2626':isSat?'#2563eb':'#1e2a3a'}">(${DOWNAMES[dow]}${isHol?'祝':''})</span></div>
-          ${shiftLabel
-            ?`<div style="font-size:12px;font-weight:700;color:#1e2a3a;margin-top:3px;background:#e8f4fd;border-radius:4px;padding:2px 5px;display:inline-block">⌚ ${shiftLabel}</div>`
-            :`<div style="font-size:11px;color:#94a3b8;margin-top:2px">—</div>`}
+          ${isHolidayChange
+            ?`<div style="font-size:11px;font-weight:700;color:#9d174d;margin-top:3px;background:#fce7f3;border-radius:4px;padding:2px 5px;display:inline-block">🚫 休日変更中</div>`
+            :shiftLabel
+              ?`<div style="font-size:12px;font-weight:700;color:#1e2a3a;margin-top:3px;background:#e8f4fd;border-radius:4px;padding:2px 5px;display:inline-block">⌚ ${shiftLabel}</div>`
+              :`<div style="font-size:11px;color:#94a3b8;margin-top:2px">—</div>`}
           ${sh&&sh.memo?`<div style="font-size:9px;color:var(--pink2);margin-top:1px;line-height:1.3;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:120px">📝${escHtml(sh.memo.length>15?sh.memo.slice(0,15)+'…':sh.memo)}</div>`:''}
           ${sub.checkedDates&&sub.checkedDates[ds]?`<div style="font-size:8px;color:#94a3b8;margin-top:2px;line-height:1.3">${typeof sub.checkedDates[ds]==="object"?sub.checkedDates[ds].datetime:sub.checkedDates[ds]}</div>`:''}
         </td>

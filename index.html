@@ -1926,10 +1926,31 @@ function icConfirmHoliday(castName, wk, ds){
           return cd&&cd.checked;
         })
       );
-      // ステータスをchange_confirmedに
-      sub.status='change_confirmed';
-      sub.confirmedBy=currentStaffName||'内勤';
-      sub.confirmedAt=new Date().toLocaleString('ja-JP');
+      // 残りシフトが全チェック済みか確認
+      const _dates2=getWeekDates(wk);
+      const _stores2=S.castStores[castName]||[];
+      const _items2=[...new Set(['記録簿',..._stores2])];
+      const _remainDates=_dates2.filter(d=>{
+        if(d===ds)return false; // 今回確定した休日は除外
+        // holidayChangeDatesの他の日も除外
+        if((sub.holidayChangeDates||[]).includes(d))return false;
+        const sh=S.shifts[castName+'_'+d];
+        return sh&&sh.start!=null;
+      });
+      const _allDone2=_remainDates.length===0||_remainDates.every(d=>
+        _items2.every(it=>{
+          const cd=S.checkData[castName+'_'+wk+'_'+d+'_'+it];
+          return cd&&cd.checked;
+        })
+      );
+      // 残り全チェック済みならchange_confirmed、そうでなければchange_inputting（チェック継続）
+      if(_allDone2){
+        sub.status='change_confirmed';
+        sub.confirmedBy=currentStaffName||'内勤';
+        sub.confirmedAt=new Date().toLocaleString('ja-JP');
+      } else {
+        sub.status='change_inputting';
+      }
       addLog('change_confirm',castName,wk,`休日変更確定：${ds}`);
       saveState(false);
       renderInputCheck();
@@ -2836,7 +2857,7 @@ function renderInputCheckBody(){
       if(isChangedDay&&isHolidayChange&&(dsub.status==='change_submitted'||dsub.status==='change_inputting')){
         // 休日変更提出
         rowClass='ic-row-change-wait';
-        dayBadge=`<button onclick="icConfirmHoliday('${u.name}','${icWeekKey}','${ds}')" style="padding:3px 7px;font-size:10px;font-weight:700;background:#fce7f3;color:#9d174d;border:1.5px solid #f472b6;border-radius:5px;cursor:pointer;white-space:nowrap;line-height:1.4">🚫 休日変更</button>`;dayBadgeCls='';
+        dayBadge=`<button onclick="icConfirmHoliday('${u.name}','${icWeekKey}','${ds}')" style="padding:2px 3px;font-size:9px;font-weight:700;background:#fce7f3;color:#9d174d;border:1.5px solid #f472b6;border-radius:5px;cursor:pointer;white-space:normal;word-break:keep-all;line-height:1.3;width:100%;text-align:center">🚫 休日<br>変更</button>`;dayBadgeCls='';
       } else if(isChangedDay&&(dsub.status==='change_submitted'||dsub.status==='change_inputting')){
         // 変更許可した日・再提出済み
         rowClass='ic-row-change-wait';

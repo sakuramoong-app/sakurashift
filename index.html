@@ -1988,6 +1988,7 @@ function submitShifts(){
     if(!(sub.holidayChangeDates&&sub.holidayChangeDates.length))return;
     const wk=k.slice(name.length+1);
     changeWks.add(wk);
+    blockedWks.delete(wk); // blockedWksから除外（変更再提出として扱う）
   });
   if(normalWks.size===0&&changeWks.size===0){
     if(blockedWks.size>0){
@@ -2053,6 +2054,7 @@ function doSubmitShifts(){
     if(!(sub.holidayChangeDates&&sub.holidayChangeDates.length))return;
     const wk=k.slice(name.length+1);
     changeWks.add(wk);
+    blockedWks.delete(wk); // blockedWksから除外（変更再提出として扱う）
   });
 
   if(normalWks.size===0&&changeWks.size===0){

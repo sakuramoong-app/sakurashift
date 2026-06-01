@@ -1979,6 +1979,14 @@ function submitShifts(){
     else if(sub.status==='change_unlocked'){changeWks.add(wk);} // 変更許可中は変更再提出
     else{blockedWks.add(wk);} // 提出済み全ステータスは再提出不可（週問わず）
   }
+  // holidayChangeDatesが設定されている週も変更再提出対象に追加
+  Object.entries(S.submissions||{}).forEach(([k,sub])=>{
+    if(!k.startsWith(name+'_'))return;
+    if(sub.status!=='change_unlocked')return;
+    if(!(sub.holidayChangeDates&&sub.holidayChangeDates.length))return;
+    const wk=k.slice(name.length+1);
+    changeWks.add(wk);
+  });
   if(normalWks.size===0&&changeWks.size===0){
     if(blockedWks.size>0){
       const bl=[...blockedWks].sort().map(w=>`・${getWeekLabel(w)}`).join('<br>');

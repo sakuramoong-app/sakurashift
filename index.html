@@ -774,6 +774,7 @@ if(!S.castList){
 if(!S.checkNotes)S.checkNotes={};
 if(!S.castFixedMemo)S.castFixedMemo={};
 if(!S.castLocks)S.castLocks={};
+if(!S.castAbsence)S.castAbsence={};
 if(!S.checkData)S.checkData={};
 if(!S.staffList)S.staffList=[{name:'店長A',color:'#ec4899'},{name:'副店長B',color:'#3b82f6'},{name:'内勤C',color:'#10b981'}];
 if(!S.staffPw)S.staffPw='0000'; else S.staffPw=String(S.staffPw).padStart(String(S.staffPw).length,'0');
@@ -1449,8 +1450,11 @@ function renderCal(){
     const wkTmp2=getWeekKey(ds);
     const subTmp2=S.submissions[name+'_'+wkTmp2];
     const isLockedByConf=conf||(subTmp2&&subTmp2.status==='change_unlocked'&&subTmp2.changedDates&&subTmp2.changedDates.length>0&&!subTmp2.changedDates.includes(ds));
-    const cellClick=isClosed?'':(isLockedByConf?`onclick="openLockedModal('${ds}')"`:` onclick="openShiftModal('${ds}')"`);
-    html+=`<div class="${cls}" ${cellClick} style="${isClosed?'opacity:.4;cursor:default;':''}">${inner}</div>`;
+    // 事前申告休暇日はグレーアウト・タップ不可
+    const _isAbsDay=isAbsenceDate(name,ds);
+    const cellClick=isClosed||_isAbsDay?'':(isLockedByConf?`onclick="openLockedModal('${ds}')"`:` onclick="openShiftModal('${ds}')"`);
+    const _absStyle=_isAbsDay?'background:#f1f5f9;cursor:not-allowed;opacity:.5':'';
+    html+=`<div class="${cls}" ${cellClick} style="${isClosed?'opacity:.4;cursor:default;':_absStyle}">${_isAbsDay?`<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:9px;color:#94a3b8;pointer-events:none">休暇</div>`:inner}</div>`;
   }
   const endDow=(last.getDay()+6)%7;
   for(let i=endDow+1;i<7;i++){const d=new Date(calY,calM+1,i-endDow,12,0,0);html+=`<div class="cal-cell other-month"><div class="cal-date">${d.getDate()}</div></div>`;}
@@ -2634,10 +2638,21 @@ function renderInputCheckBody(){
     const sk=u.name+'_'+icWeekKey,sub=S.submissions[sk];
     // 未提出の場合はシンプルな行を表示
     if(!sub){
-      html+=`<div class="card" style="padding:10px 14px;opacity:0.6;display:flex;align-items:center;gap:10px">
-        <span style="font-weight:700;font-size:13px">${u.name}</span>
-        <span class="badge badge-gray" style="font-size:11px">未提出</span>
-      </div>`;
+      const _absIC=getCastAbsences(u.name).filter(a=>getWeekDates(icWeekKey).some(ds=>a.from<=ds&&ds<=a.to));
+      if(_absIC.length){
+        html+=`<div class="card" style="padding:10px 14px;background:#eff6ff;border:1px solid #93c5fd">
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+            <span style="font-weight:700;font-size:13px">${u.name}</span>
+            <span class="badge" style="background:#dbeafe;color:#1e40af;font-size:11px">📅 休暇中</span>
+            ${_absIC.map(a=>`<span style="font-size:11px;color:#2563eb">${a.from}〜${a.to}：${escHtml(a.reason||'')}</span>`).join('')}
+          </div>
+        </div>`;
+      } else {
+        html+=`<div class="card" style="padding:10px 14px;opacity:0.6;display:flex;align-items:center;gap:10px">
+          <span style="font-weight:700;font-size:13px">${u.name}</span>
+          <span class="badge badge-gray" style="font-size:11px">未提出</span>
+        </div>`;
+      }
       return;
     }
     const stores=S.castStores[u.name]||[];
@@ -3470,10 +3485,11 @@ function renderHourly(){
           <div>
             <div style="font-weight:700">${u.name}</div>
             ${reminded?'<div style="font-size:10px;color:#059669;font-weight:600">✅ 催促済み</div>':''}
+            ${(()=>{const _absH=getCastAbsences(u.name).filter(a=>getWeekDates(_dashNextWk).some(ds=>a.from<=ds&&ds<=a.to));return _absH.length?_absH.map(a=>`<div style="font-size:10px;color:#1d4ed8;font-weight:600">📅 ${a.from}〜${a.to}：${escHtml(a.reason||'')}</div>`).join(''):'';})()}
           </div>
         </div>
         <div style="display:flex;align-items:center;gap:8px">
-          <span class="badge badge-danger">未提出</span>
+          ${(()=>{const _absH2=getCastAbsences(u.name).filter(a=>getWeekDates(_dashNextWk).some(ds=>a.from<=ds&&ds<=a.to));return _absH2.length?'<span class="badge" style="background:#dbeafe;color:#1e40af;font-size:11px">📅 休暇中</span>':'<span class="badge badge-danger">未提出</span>';})()}
           <label style="display:flex;align-items:center;gap:4px;cursor:pointer;font-size:12px;color:var(--text2);white-space:nowrap">
             <input type="checkbox" ${reminded?'checked':''}
               style="width:14px;height:14px;accent-color:var(--success);cursor:pointer"
@@ -3553,6 +3569,63 @@ function renderHourly(){
 }
 
 // ===== SETTINGS =====
+
+// ============================================================
+// 事前申告休暇（castAbsence）ヘルパー
+// ============================================================
+function getCastAbsences(castName){
+  return (S.castAbsence&&S.castAbsence[castName])||[];
+}
+function isAbsenceDate(castName, ds){
+  return getCastAbsences(castName).some(a=>a.from<=ds&&ds<=a.to);
+}
+function getAbsenceForDate(castName, ds){
+  return getCastAbsences(castName).find(a=>a.from<=ds&&ds<=a.to)||null;
+}
+function addCastAbsence(castName, from, to, reason){
+  if(!S.castAbsence)S.castAbsence={};
+  if(!S.castAbsence[castName])S.castAbsence[castName]=[];
+  S.castAbsence[castName].push({from,to,reason:reason||''});
+  saveState(false);
+  renderSettings();
+}
+function removeCastAbsence(castName, idx){
+  if(!S.castAbsence||!S.castAbsence[castName])return;
+  S.castAbsence[castName].splice(idx,1);
+  if(!S.castAbsence[castName].length)delete S.castAbsence[castName];
+  saveState(false);
+  renderSettings();
+}
+function openAbsenceModal(castName){
+  const absences=getCastAbsences(castName);
+  let listHtml='';
+  if(absences.length){
+    listHtml='<div style="margin-bottom:10px">';
+    absences.forEach((a,i)=>{
+      listHtml+=`<div style="display:flex;align-items:center;gap:6px;padding:5px 0;border-bottom:1px solid var(--border);font-size:12px">
+        <span style="font-weight:700;color:var(--navy);white-space:nowrap">${a.from}〜${a.to}</span>
+        <span style="flex:1;color:var(--text2)">${escHtml(a.reason||'理由なし')}</span>
+        <button onclick="removeCastAbsence('${castName}',${i})" style="padding:2px 8px;font-size:11px;background:#fee2e2;color:#991b1b;border:1px solid #fca5a5;border-radius:4px;cursor:pointer">削除</button>
+      </div>`;
+    });
+    listHtml+='</div>';
+  }
+  openInfoModal(`<div style="min-width:280px">
+    <div style="font-weight:700;font-size:14px;margin-bottom:10px">📅 ${castName} の事前申告休暇</div>
+    ${listHtml}
+    <div style="background:#f8fafc;border-radius:8px;padding:10px;font-size:12px">
+      <div style="font-weight:600;margin-bottom:6px;color:var(--navy)">新規追加</div>
+      <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+        <input type="date" id="absFrom" style="padding:4px 6px;border:1.5px solid var(--border);border-radius:5px;font-size:12px">
+        <span style="color:var(--text2)">〜</span>
+        <input type="date" id="absTo" style="padding:4px 6px;border:1.5px solid var(--border);border-radius:5px;font-size:12px">
+      </div>
+      <input type="text" id="absReason" placeholder="理由（例：出稼ぎ、帰省など）" style="width:100%;margin-top:6px;padding:5px 8px;border:1.5px solid var(--border);border-radius:5px;font-size:12px;box-sizing:border-box">
+      <button onclick="(()=>{const f=document.getElementById('absFrom').value,t=document.getElementById('absTo').value,r=document.getElementById('absReason').value;if(!f||!t){alert('期間を入力してください');return;}if(f>t){alert('開始日は終了日以前にしてください');return;}addCastAbsence('${castName}',f,t,r);closeModal();})()" style="margin-top:8px;width:100%;padding:7px;background:var(--navy);color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:13px;font-weight:600">追加する</button>
+    </div>
+  </div>`);
+}
+
 function renderSettings(){
   if(!S.staffList)S.staffList=[];
   if(!S.castList)S.castList=[];
@@ -3590,6 +3663,7 @@ function renderSettings(){
         const gasLocked=S.castLocks&&S.castLocks[u.name]&&!S.castLocks[u.name].unlockedByStaff;
         return gasLocked?`<span style="margin-left:12px"><button style="padding:4px 12px;font-size:11px;font-weight:700;background:#dc2626;color:#fff;border:none;border-radius:6px;cursor:pointer;box-shadow:0 2px 6px rgba(220,38,38,.4)" onclick="unlockCastByStaff('${u.name}')">🔓 ロック解除</button></span>`:'';
       })()}
+      <button onclick="openAbsenceModal('${u.name}')" style="padding:3px 8px;font-size:11px;background:#eff6ff;color:#1d4ed8;border:1px solid #93c5fd;border-radius:5px;cursor:pointer">${(()=>{const abs=getCastAbsences(u.name);return abs.length?`📅 休暇(${abs.length})`:'📅 休暇';})()}</button>
       <button class="btn btn-danger btn-sm" onclick="removeCast('${u.name}')">削除</button>
     </div>`;
   });

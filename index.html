@@ -1904,53 +1904,26 @@ function icConfirmHoliday(castName, wk, ds){
     ()=>{
       const sub=S.submissions[castName+'_'+wk];
       if(!sub)return;
-      // その日のチェックを全クリア
+      // その日のシフトデータを削除（休日扱い）
+      delete S.shifts[castName+'_'+ds];
+      // チェック済みのものをクリア（未チェックはそのまま残す→グレーアウト表示）
       const stores=S.castStores[castName]||[];
       const items=[...new Set(['記録簿',...stores])];
       items.forEach(it=>{
         const key=castName+'_'+wk+'_'+ds+'_'+it;
-        if(S.checkData[key])delete S.checkData[key];
+        if(S.checkData[key]&&S.checkData[key].checked){
+          delete S.checkData[key];
+        }
       });
       // checkedDatesからも削除
       if(sub.checkedDates&&sub.checkedDates[ds])delete sub.checkedDates[ds];
-      // 残りシフトが全チェック済みかチェック
-      const dates=getWeekDates(wk);
-      const shiftDates=dates.filter(d=>{
-        if(d===ds)return false; // 今回休日にした日は除外
-        const sh=S.shifts[castName+'_'+d];
-        return sh&&sh.start!=null;
-      });
-      const allDone=shiftDates.length===0||shiftDates.every(d=>
-        items.every(it=>{
-          const cd=S.checkData[castName+'_'+wk+'_'+d+'_'+it];
-          return cd&&cd.checked;
-        })
-      );
-      // 残りシフトが全チェック済みか確認
-      const _dates2=getWeekDates(wk);
-      const _stores2=S.castStores[castName]||[];
-      const _items2=[...new Set(['記録簿',..._stores2])];
-      const _remainDates=_dates2.filter(d=>{
-        if(d===ds)return false; // 今回確定した休日は除外
-        // holidayChangeDatesの他の日も除外
-        if((sub.holidayChangeDates||[]).includes(d))return false;
-        const sh=S.shifts[castName+'_'+d];
-        return sh&&sh.start!=null;
-      });
-      const _allDone2=_remainDates.length===0||_remainDates.every(d=>
-        _items2.every(it=>{
-          const cd=S.checkData[castName+'_'+wk+'_'+d+'_'+it];
-          return cd&&cd.checked;
-        })
-      );
-      // 残り全チェック済みならchange_confirmed、そうでなければchange_inputting（チェック継続）
-      if(_allDone2){
-        sub.status='change_confirmed';
-        sub.confirmedBy=currentStaffName||'内勤';
-        sub.confirmedAt=new Date().toLocaleString('ja-JP');
-      } else {
-        sub.status='change_inputting';
-      }
+      // holidayChangeDatesに追加（まだなければ）
+      if(!sub.holidayChangeDates)sub.holidayChangeDates=[];
+      if(!sub.holidayChangeDates.includes(ds))sub.holidayChangeDates.push(ds);
+      // ステータスをchange_confirmedに（残り状況に関わらず）
+      sub.status='change_confirmed';
+      sub.confirmedBy=currentStaffName||'内勤';
+      sub.confirmedAt=new Date().toLocaleString('ja-JP');
       addLog('change_confirm',castName,wk,`休日変更確定：${ds}`);
       saveState(false);
       renderInputCheck();
@@ -1968,43 +1941,15 @@ function setHolidayShift(ds){
   }
   // シフトを削除（休日）
   delete S.shifts[name+'_'+ds];
-  // isHolidayChangeフラグを立てる
+  // isHolidayChangeフラグを立てる（提出はしない）
   if(!sub.holidayChangeDates)sub.holidayChangeDates=[];
   if(!sub.holidayChangeDates.includes(ds))sub.holidayChangeDates.push(ds);
-  // ステータスを変更提出に
-  sub.status='change_submitted';
-  sub.changeSubmittedAt=new Date().toLocaleString('ja-JP');
-  addLog('change_submit',name,wk,`休日変更提出：${ds}`);
-  closeModal();
-  showSyncOverlay('反映中...');
-  // localStorageに保存
+  // localStorageのみ保存（GASへの送信は提出ボタン押下時に行う）
   S._savedAt=Date.now();
   try{localStorage.setItem('shiftSysV8',JSON.stringify(S));}catch(e){}
-  // GASにcastSaveで送信
-  if(GAS_URL){
-    const _subs={};
-    _subs[name+'_'+wk]=S.submissions[name+'_'+wk];
-    const _shifts={};
-    Object.entries(S.shifts||{}).forEach(([k,v])=>{if(k.startsWith(name+'_'))_shifts[k]=v;});
-    const _body=new FormData();
-    _body.append('action','castSave');
-    _body.append('token','sakura2025shift');
-    _body.append('castName',name);
-    _body.append('shifts',JSON.stringify(_shifts));
-    _body.append('submissions',JSON.stringify(_subs));
-    fetch(GAS_URL,{method:'POST',body:_body})
-      .then(r=>r.json())
-      .then(result=>{
-        hideSyncOverlay();
-        if(result&&result.error) console.warn('castSave error:',result.error);
-        showToast('🚫 休日として提出しました。内勤の確認をお待ちください。');
-        renderCal();
-      }).catch(e=>{hideSyncOverlay();showToast('🚫 休日として提出しました。内勤の確認をお待ちください。');renderCal();});
-  } else {
-    hideSyncOverlay();
-    showToast('🚫 休日として提出しました。内勤の確認をお待ちください。');
-    renderCal();
-  }
+  closeModal();
+  showToast('🚫 休日に設定しました。他の変更も確認して提出ボタンを押してください。');
+  renderCal();
 }
 
 function saveShift(ds){
@@ -2089,13 +2034,19 @@ function doSubmitShifts(){
     }
   }
 
+  // holidayChangeDatesが設定されている週も変更再提出対象に追加
+  Object.entries(S.submissions||{}).forEach(([k,sub])=>{
+    if(!k.startsWith(name+'_'))return;
+    if(sub.status!=='change_unlocked')return;
+    if(!(sub.holidayChangeDates&&sub.holidayChangeDates.length))return;
+    const wk=k.slice(name.length+1);
+    changeWks.add(wk);
+  });
+
   if(normalWks.size===0&&changeWks.size===0){
     openInfoModal('提出するシフトがありません。カレンダーからシフトを入力してください。');
     return;
   }
-
-  const now=new Date().toLocaleString('ja-JP');
-  const allWks=[...normalWks,...changeWks].sort();
 
   normalWks.forEach(wk=>{
     const k=name+'_'+wk;

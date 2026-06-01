@@ -1914,11 +1914,34 @@ function setHolidayShift(ds){
   addLog('change_submit',name,wk,`休日変更提出：${ds}`);
   closeModal();
   showSyncOverlay('反映中...');
-  saveState(false).then(()=>{
+  // localStorageに保存
+  S._savedAt=Date.now();
+  try{localStorage.setItem('shiftSysV8',JSON.stringify(S));}catch(e){}
+  // GASにcastSaveで送信
+  if(GAS_URL){
+    const _subs={};
+    _subs[name+'_'+wk]=S.submissions[name+'_'+wk];
+    const _shifts={};
+    Object.entries(S.shifts||{}).forEach(([k,v])=>{if(k.startsWith(name+'_'))_shifts[k]=v;});
+    const _body=new FormData();
+    _body.append('action','castSave');
+    _body.append('token','sakura2025shift');
+    _body.append('castName',name);
+    _body.append('shifts',JSON.stringify(_shifts));
+    _body.append('submissions',JSON.stringify(_subs));
+    fetch(GAS_URL,{method:'POST',body:_body})
+      .then(r=>r.json())
+      .then(result=>{
+        hideSyncOverlay();
+        if(result&&result.error) console.warn('castSave error:',result.error);
+        showToast('🚫 休日として提出しました。内勤の確認をお待ちください。');
+        renderCal();
+      }).catch(e=>{hideSyncOverlay();showToast('🚫 休日として提出しました。内勤の確認をお待ちください。');renderCal();});
+  } else {
     hideSyncOverlay();
     showToast('🚫 休日として提出しました。内勤の確認をお待ちください。');
     renderCal();
-  });
+  }
 }
 
 function saveShift(ds){
@@ -2046,12 +2069,15 @@ function doSubmitShifts(){
       if(k.startsWith(name+'_')) submitData.shifts[k]=v;
     });
     const body=new FormData();
-    body.append('action','castSubmit');
+    body.append('action','castSave');
     body.append('token','sakura2025shift');
-    body.append('data',JSON.stringify(submitData));
+    body.append('castName',name);
+    body.append('shifts',JSON.stringify(submitData.shifts));
+    body.append('submissions',JSON.stringify(submitData.submissions));
     fetch(GAS_URL,{method:'POST',body}).then(r=>r.json()).then(result=>{
-      if(result&&result.error) console.warn('castSubmit error:',result.error);
-    }).catch(e=>console.warn('castSubmit failed:',e));
+      if(result&&result.error) console.warn('castSave error:',result.error);
+      else console.log('castSave OK');
+    }).catch(e=>console.warn('castSave failed:',e));
   }
   closeModal();
 

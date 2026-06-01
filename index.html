@@ -1980,9 +1980,11 @@ function submitShifts(){
     else{blockedWks.add(wk);} // 提出済み全ステータスは再提出不可（週問わず）
   }
   // holidayChangeDatesが設定されている週も変更再提出対象に追加
+  // （change_unlocked: 休日にするボタン後、change_submitted: 以前の送信済み分も対応）
   Object.entries(S.submissions||{}).forEach(([k,sub])=>{
     if(!k.startsWith(name+'_'))return;
-    if(sub.status!=='change_unlocked')return;
+    const _validStatus=['change_unlocked','change_submitted','change_inputting'];
+    if(!_validStatus.includes(sub.status))return;
     if(!(sub.holidayChangeDates&&sub.holidayChangeDates.length))return;
     const wk=k.slice(name.length+1);
     changeWks.add(wk);
@@ -2043,9 +2045,11 @@ function doSubmitShifts(){
   }
 
   // holidayChangeDatesが設定されている週も変更再提出対象に追加
+  // （change_unlocked: 休日にするボタン後、change_submitted: 以前の送信済み分も対応）
   Object.entries(S.submissions||{}).forEach(([k,sub])=>{
     if(!k.startsWith(name+'_'))return;
-    if(sub.status!=='change_unlocked')return;
+    const _validStatus=['change_unlocked','change_submitted','change_inputting'];
+    if(!_validStatus.includes(sub.status))return;
     if(!(sub.holidayChangeDates&&sub.holidayChangeDates.length))return;
     const wk=k.slice(name.length+1);
     changeWks.add(wk);

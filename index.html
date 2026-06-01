@@ -716,8 +716,11 @@ function saveState(showOverlay=true){
   }catch(e){console.warn('localStorage error:',e);}
 
   if(!GAS_URL){_isSaving=false;return Promise.resolve(false);}
-  // キャストはGASへの書き込み禁止（他キャストのデータを上書きしてしまうため）
-  if(currentType==='cast'){_isSaving=false;return Promise.resolve(false);}
+  // キャストはGASへの全体保存をしない（自分のデータのみしか持っていないため上書き防止）
+  if(currentType==='cast'){
+    _isSaving=false;
+    return Promise.resolve(true);
+  }
   _isSaving=true;
   if(showOverlay) showSyncOverlay('保存中...');
 
@@ -1905,33 +1908,13 @@ function setHolidayShift(ds){
   sub.status='change_submitted';
   sub.changeSubmittedAt=new Date().toLocaleString('ja-JP');
   addLog('change_submit',name,wk,`休日変更提出：${ds}`);
-  // localStorageに保存
-  try{localStorage.setItem('shiftSysV8',JSON.stringify(S));}catch(e){}
   closeModal();
-  // GASにキャスト専用送信（休日提出もsaveCastSubmissionで送る）
-  const myShiftsForHoliday={};
-  Object.entries(S.shifts||{}).forEach(([k,v])=>{if(k.startsWith(name+'_')&&v!=null)myShiftsForHoliday[k]=v;});
-  const mySubsForHoliday={};
-  Object.entries(S.submissions||{}).forEach(([k,v])=>{if(k.startsWith(name+'_')&&v!=null)mySubsForHoliday[k]=v;});
   showSyncOverlay('反映中...');
-  (async()=>{
-    if(GAS_URL&&Object.keys(mySubsForHoliday).length>0){
-      try{
-        const body=new FormData();
-        body.append('action','castSave');
-        body.append('token','sakura2025shift');
-        body.append('castName',name);
-        body.append('shifts',JSON.stringify(myShiftsForHoliday));
-        body.append('submissions',JSON.stringify(mySubsForHoliday));
-        const res=await fetch(GAS_URL,{method:'POST',body});
-        const result=await res.json();
-        if(result&&result.error)console.warn('holiday castSave error:',result.error);
-      }catch(e){console.warn('holiday castSave failed:',e);}
-    }
+  saveState(false).then(()=>{
     hideSyncOverlay();
     showToast('🚫 休日として提出しました。内勤の確認をお待ちください。');
     renderCal();
-  })();
+  });
 }
 
 function saveShift(ds){
@@ -2043,10 +2026,29 @@ function doSubmitShifts(){
     }
   });
 
-  // localStorageには保存（キャスト自身の画面更新用）
-  try{localStorage.setItem('shiftSysV8',JSON.stringify(S));}catch(e){}
-  // GASにはキャスト専用のpartial saveで送信
-  saveCastSubmission(name, allWks);
+  // localStorageには保存（GASへの全体上書きはしない）
+  S._savedAt=Date.now();
+  try{const _j=JSON.stringify(S);localStorage.setItem('shiftSysV8',_j);}catch(e){}
+  // キャストの提出データのみGASに送る（専用POSTエンドポイント）
+  if(GAS_URL){
+    const submitData={castName:name,submissions:{}};
+    [...normalWks,...changeWks].forEach(wk=>{
+      const k=name+'_'+wk;
+      if(S.submissions[k]) submitData.submissions[k]=S.submissions[k];
+    });
+    // shiftsも自分の分だけ送る
+    submitData.shifts={};
+    Object.entries(S.shifts||{}).forEach(([k,v])=>{
+      if(k.startsWith(name+'_')) submitData.shifts[k]=v;
+    });
+    const body=new FormData();
+    body.append('action','castSubmit');
+    body.append('token','sakura2025shift');
+    body.append('data',JSON.stringify(submitData));
+    fetch(GAS_URL,{method:'POST',body}).then(r=>r.json()).then(result=>{
+      if(result&&result.error) console.warn('castSubmit error:',result.error);
+    }).catch(e=>console.warn('castSubmit failed:',e));
+  }
   closeModal();
 
   let toastMsg=`以下の週のシフトを提出しました！<br><br>`;
@@ -2055,46 +2057,6 @@ function doSubmitShifts(){
   toastMsg+='<br>内勤スタッフの確認をお待ちください 🙏';
   showToast(toastMsg);
   renderCal();
-}
-
-// キャスト提出専用：自分のシフトとsubmissionsのみGASに送る
-async function saveCastSubmission(castName, weeks){
-  if(!GAS_URL)return;
-  // 自分のシフトのみ抽出（null/undefinedは除外してデータ消失防止）
-  const myShifts={};
-  Object.entries(S.shifts||{}).forEach(([k,v])=>{
-    if(k.startsWith(castName+'_')&&v!=null)myShifts[k]=v;
-  });
-  // 自分のsubmissionsのみ抽出
-  const mySubs={};
-  Object.entries(S.submissions||{}).forEach(([k,v])=>{
-    if(k.startsWith(castName+'_')&&v!=null)mySubs[k]=v;
-  });
-  // 送るデータがない場合はスキップ
-  if(Object.keys(mySubs).length===0){
-    console.warn('[castSave] submissions空のためスキップ');
-    return;
-  }
-  try{
-    showSyncOverlay('提出中...');
-    const body=new FormData();
-    body.append('action','castSave');
-    body.append('token','sakura2025shift');
-    body.append('castName',castName);
-    body.append('shifts',JSON.stringify(myShifts));
-    body.append('submissions',JSON.stringify(mySubs));
-    const res=await fetch(GAS_URL,{method:'POST',body});
-    const result=await res.json();
-    hideSyncOverlay();
-    if(result&&result.error){
-      console.warn('castSave error:',result.error);
-      showToast('⚠️ 提出データの送信に失敗しました。再度お試しください。');
-    }
-  }catch(e){
-    hideSyncOverlay();
-    console.warn('castSave failed:',e);
-    showToast('⚠️ 提出データの送信に失敗しました。再度お試しください。');
-  }
 }
 
 function renderChangeReq(name){
@@ -2646,14 +2608,21 @@ function renderInputCheckBody(){
     return true;
   });
   const submittedCasts=castList.filter(u=>S.submissions[u.name+'_'+icWeekKey]);
+  // 全員表示モードの場合は未提出も含む
+  const displayCasts=window.icShowAll?castList:submittedCasts;
   console.log('[IC] icWeekKey:',icWeekKey,'castList:',castList.length,'submitted:',submittedCasts.length,'group:',icSelectedGroup);
   console.log('[IC] submissions keys:',Object.keys(S.submissions||{}).slice(0,5));
   const icBodyEl=document.getElementById('icBody');
   if(!icBodyEl)return;
 
-  let html='';
-  if(!submittedCasts.length){
-    html=`<div class="card"><p style="color:var(--text2);font-size:12px;padding:6px 0">${q?`「${q}」に一致する提出者はいません`:'この週の提出者はいません（週:${icWeekKey}）'}</p></div>`;
+  // 全員/提出済みトグルを追加
+  let html=`<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+    <button onclick="window.icShowAll=false;renderInputCheckBody()" style="padding:4px 12px;font-size:12px;border-radius:6px;border:1px solid var(--pink);background:${!window.icShowAll?'var(--pink)':'#fff'};color:${!window.icShowAll?'#fff':'var(--pink)'};cursor:pointer;font-weight:${!window.icShowAll?'700':'400'}">提出済みのみ（${submittedCasts.length}名）</button>
+    <button onclick="window.icShowAll=true;renderInputCheckBody()" style="padding:4px 12px;font-size:12px;border-radius:6px;border:1px solid var(--navy);background:${window.icShowAll?'var(--navy)':'#fff'};color:${window.icShowAll?'#fff':'var(--navy)'};cursor:pointer;font-weight:${window.icShowAll?'700':'400'}">全員（${castList.length}名）</button>
+  </div>`;
+
+  if(!displayCasts.length){
+    html+=`<div class="card"><p style="color:var(--text2);font-size:12px;padding:6px 0">${q?`「${q}」に一致するキャストはいません`:'この週の提出者はいません'}</p></div>`;
     icBodyEl.innerHTML=html;return;
   }
 
@@ -2661,8 +2630,16 @@ function renderInputCheckBody(){
   const sMap=STATUS_LABEL;
   const sBadge=STATUS_BADGE;
 
-  submittedCasts.forEach(u=>{
+  displayCasts.forEach(u=>{
     const sk=u.name+'_'+icWeekKey,sub=S.submissions[sk];
+    // 未提出の場合はシンプルな行を表示
+    if(!sub){
+      html+=`<div class="card" style="padding:10px 14px;opacity:0.6;display:flex;align-items:center;gap:10px">
+        <span style="font-weight:700;font-size:13px">${u.name}</span>
+        <span class="badge badge-gray" style="font-size:11px">未提出</span>
+      </div>`;
+      return;
+    }
     const stores=S.castStores[u.name]||[];
     const items=[...new Set(['記録簿',...stores])];
     const isConf=sub.status==='confirmed'||sub.status==='change_confirmed';
@@ -2853,7 +2830,6 @@ function renderInputCheckBody(){
             :`<div style="font-size:11px;color:#94a3b8;margin-top:2px">—</div>`}
           ${sh&&sh.memo?`<div style="font-size:9px;color:var(--pink2);margin-top:1px;line-height:1.3;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:120px">📝${escHtml(sh.memo.length>15?sh.memo.slice(0,15)+'…':sh.memo)}</div>`:''}
           ${sub.checkedDates&&sub.checkedDates[ds]?`<div style="font-size:8px;color:#94a3b8;margin-top:2px;line-height:1.3">${typeof sub.checkedDates[ds]==="object"?sub.checkedDates[ds].datetime:sub.checkedDates[ds]}</div>`:''}
-          ${(isHolidayChange&&(dsub.status==='change_submitted'||dsub.status==='change_inputting'))?`<button onclick="icConfirmHoliday('${u.name}','${dsWk}','${ds}')" style="margin-top:4px;padding:2px 7px;font-size:10px;font-weight:700;background:#fee2e2;color:#991b1b;border:1px solid #fca5a5;border-radius:5px;cursor:pointer;display:block;width:100%">🚫 休日にする</button>`:''}
         </td>
         <td class="ic-bulk-cell" rowspan="2" style="padding:3px 2px!important;min-width:32px;border-right:1px solid var(--border)!important;vertical-align:middle">
           <input type="checkbox" title="一括チェック" ${allCheckedForDay?'checked':''} ${(!sh||sh.start==null)?'disabled':''}
@@ -3214,82 +3190,6 @@ function icSaveNote(noteKey,val){
   S.checkNotes[noteKey]=val;
   saveState(false);
 }
-// 内勤側：休日変更を確定する
-function icConfirmHoliday(castName, wk, ds) {
-  const k = castName + '_' + wk;
-  const sub = S.submissions[k];
-  if (!sub) { openInfoModal('提出データがありません'); return; }
-
-  // change_submitted / change_inputting のみ操作可
-  if (sub.status !== 'change_submitted' && sub.status !== 'change_inputting') {
-    openInfoModal('この操作は変更提出中のみ有効です');
-    return;
-  }
-
-  // holidayChangeDates に含まれているか確認
-  if (!(sub.holidayChangeDates || []).includes(ds)) {
-    openInfoModal('この日は休日変更提出ではありません');
-    return;
-  }
-
-  // チェックが残っていたらブロック
-  const stores = S.castStores[castName] || [];
-  const items = [...new Set(['記録簿', ...stores])];
-  const hasChecked = items.some(it => {
-    const cd = S.checkData[castName + '_' + wk + '_' + ds + '_' + it];
-    return cd && cd.checked;
-  });
-  if (hasChecked) {
-    const dt = new Date(ds);
-    openInfoModal(`⚠️ ${dt.getMonth()+1}/${dt.getDate()} はチェックが残っています。チェックを外してから休日にしてください。`);
-    return;
-  }
-
-  openConfirmModal(`${castName}さん ${(()=>{const dt=new Date(ds);return (dt.getMonth()+1)+'/'+dt.getDate();})()}（${['日','月','火','水','木','金','土'][new Date(ds).getDay()]}）を休日として確定しますか？`, () => {
-    // シフトデータを削除（休日）
-    delete S.shifts[castName + '_' + ds];
-
-    // 全週の休日変更が確定されたか確認
-    const allHolidayConfirmed = (sub.holidayChangeDates || []).every(hds => {
-      // まだシフトが残っている日があればfalse
-      return !S.shifts[castName + '_' + hds] || S.shifts[castName + '_' + hds].start == null;
-    });
-
-    // 全チェック完了 + 全休日確定なら change_confirmed へ
-    const dates = getWeekDates(wk);
-    const shiftDates = dates.filter(d => {
-      const sh = S.shifts[castName + '_' + d];
-      return sh && sh.start != null;
-    });
-    // 休日のみの週（シフト0件）も change_confirmed にできる
-    const targetDates = shiftDates.length > 0 ? shiftDates : [];
-    const totalChecks = targetDates.length * items.length;
-    const doneChecks = targetDates.reduce((acc, d) =>
-      acc + items.filter(it => {
-        const cd = S.checkData[castName + '_' + wk + '_' + d + '_' + it];
-        return cd && cd.checked;
-      }).length, 0);
-    const allDone = totalChecks === 0 || (totalChecks > 0 && doneChecks === totalChecks);
-
-    if (allDone) {
-      sub.status = 'change_confirmed';
-    }
-    // allDone でなければステータスはそのまま（change_submitted/change_inputting）
-    // 内勤が残りのチェックを完了してから更新ボタンで確定
-
-    sub.confirmedBy = currentStaffName || '内勤';
-    sub.confirmedAt = new Date().toLocaleString('ja-JP');
-    addLog('confirm', castName, wk, `休日確定：${ds}→${STATUS_LABEL[sub.status] || sub.status}`);
-
-    showSyncOverlay('保存中...');
-    saveState(false).then(() => {
-      hideSyncOverlay();
-      renderInputCheck();
-      openInfoModal(`🚫 ${castName}さんの休日を確定しました。`);
-    });
-  });
-}
-
 // 「確定」ボタン
 function confShiftIC(castName,wk){
   const k=castName+'_'+wk;

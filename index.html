@@ -2798,7 +2798,6 @@ function renderInputCheckBody(){
       const _dp=ds.split('-');const d=new Date(+_dp[0],+_dp[1]-1,+_dp[2],12,0,0),dow=(d.getDay()+6)%7;
       const isSun=d.getDay()===0,isSat=d.getDay()===6,isHol=HOLIDAYS.includes(ds);
       const sh=S.shifts[u.name+'_'+ds];
-      const shiftLabel=sh&&sh.start!=null&&!isHolidayChange?fmtR(sh.start,sh.end):'';
       // 月表示時は日付ごとに正しい週キーを使う
       const dsWk=_castViewMode==='month'?getWeekKey(new Date(+_dp[0],+_dp[1]-1,+_dp[2],12,0,0)):icWeekKey;
       const dsub=S.submissions[u.name+'_'+dsWk]||{};
@@ -2808,6 +2807,7 @@ function renderInputCheckBody(){
       const isChangedDay=(_pendingChanges[_pk]&&_pendingChanges[_pk].has(ds))||dChangedDates.includes(ds);
       const isHolidayChange=(dsub.holidayChangeDates||[]).includes(ds);
       const isPending=_pendingChanges[_pk]&&_pendingChanges[_pk].has(ds);
+      const shiftLabel=sh&&sh.start!=null&&!isHolidayChange?fmtR(sh.start,sh.end):'';
 
       // この日のチェック状態分析（月表示時はdsWkを使用）
       const dayChecks=items.map(it=>{
@@ -2928,7 +2928,7 @@ function renderInputCheckBody(){
   icBodyEl.innerHTML=html;
 
   // スクロール位置復元
-  submittedCasts.forEach(u=>{
+  displayCasts.forEach(u=>{
     const wrap=document.getElementById('wrap_'+u.name);
     if(wrap&&icScrollPositions[u.name]!=null)wrap.scrollLeft=icScrollPositions[u.name];
   });

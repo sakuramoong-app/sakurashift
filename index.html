@@ -2866,13 +2866,14 @@ function renderInputCheckBody(){
         const storeLabel=`<div style="font-size:8px;color:#1e2a3a;font-weight:600;margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:50px;text-align:center">${shortName(it)}</div>`;
         const isRestDay=!sh||sh.start==null;
         const isChangeUnlocked=sub&&sub.status==='change_unlocked'&&!isChangedDay;
-      const cellOnclick=(isRestDay||isChangedDay&&dsub&&dsub.status==='change_unlocked')?'':`onclick="icToggleCheck('${u.name}','${dsWk}','${ds}','${it}')"`;
+        const _isHolidayCell=isHolidayChange&&(dsub.status==='change_submitted'||dsub.status==='change_inputting');
+      const cellOnclick=(isRestDay||_isHolidayCell||isChangedDay&&dsub&&dsub.status==='change_unlocked')?'':`onclick="icToggleCheck('${u.name}','${dsWk}','${ds}','${it}')"`;
         return `<td class="ic-check-cell ${cd.checked?'checked':''}" id="${cellId}"
-          style="padding:3px 2px!important;min-width:52px;${_hist&&_hist.length>1?'width:auto;':'width:52px;'}${cellBg?`background:${cellBg};`:''}${borderCol};vertical-align:top;${isRestDay?'pointer-events:none;':''}"
+          style="padding:3px 2px!important;min-width:52px;${_hist&&_hist.length>1?'width:auto;':'width:52px;'}${_isHolidayCell?'background:#f1f5f9;':cellBg?`background:${cellBg};`:''}${_isHolidayCell?'border-left:3px solid #cbd5e1!important':borderCol};vertical-align:top;${(isRestDay||_isHolidayCell)?'pointer-events:none;':''}"
           ${cellOnclick}>
           ${storeLabel}
-          <input type="checkbox" class="ic-checkbox" ${cd.checked?'checked':''} ${(isRestDay||(isChangedDay&&dsub&&dsub.status==='change_unlocked'))?'disabled':''}
-            style="width:13px;height:13px;${isRestDay?'opacity:.4;cursor:default;':''}${chkColor?`accent-color:${chkColor}`:''}"
+          <input type="checkbox" class="ic-checkbox" ${cd.checked?'checked':''} ${(isRestDay||_isHolidayCell||(isChangedDay&&dsub&&dsub.status==='change_unlocked'))?'disabled':''}
+            style="width:13px;height:13px;${(isRestDay||_isHolidayCell)?'opacity:.4;cursor:default;':''}${chkColor?`accent-color:${chkColor}`:''}"
             onkeydown="icCellKeyNav(event,'${u.name}','${ds}',${itmIdx},${items.length},'${dsWk}')">
           ${chkDateLabel}
         </td>`;
@@ -3299,7 +3300,16 @@ function confShiftIC(castName,wk){
   const items2=items; // checkedDates用エイリアス
   const dates=getWeekDates(wk);
 
-  // 休日変更はicConfirmHolidayボタンで個別処理するため更新ブロック不要
+  // 休日変更の日が残っている場合はchange_inputtingに遷移してポップアップ
+  const _unconfirmedHolidays=(sub.holidayChangeDates||[]).filter(ds=>dates.includes(ds));
+  if(_unconfirmedHolidays.length>0){
+    const _labels=_unconfirmedHolidays.map(d=>{const dt=new Date(d);return `${dt.getMonth()+1}/${dt.getDate()}`;}).join('・');
+    sub.status='change_inputting';
+    saveState(false);
+    renderInputCheck();
+    openInfoModal(`⚠️ ${_labels} の休日変更ボタンが押されていません。変更入力中ステータスになります。休日変更ボタンを押して確定してください。`);
+    return;
+  }
 
   // シフトが入っている日のみを対象にチェック数を計算
   const shiftDates=dates.filter(ds=>{

@@ -1896,6 +1896,48 @@ function openShiftModal(ds){
     </div>`);
 }
 // 変更許可中の日を休日として提出する
+
+// 内勤側：休日変更を確定する
+function icConfirmHoliday(castName, wk, ds){
+  openConfirmModal(
+    `各媒体で ${castName} さんの ${(()=>{const d=new Date(ds);return (d.getMonth()+1)+'/'+d.getDate();})()}(${DOWNAMES[new Date(ds).getDay()]}) を休日に変更しましたか？`,
+    ()=>{
+      const sub=S.submissions[castName+'_'+wk];
+      if(!sub)return;
+      // その日のチェックを全クリア
+      const stores=S.castStores[castName]||[];
+      const items=[...new Set(['記録簿',...stores])];
+      items.forEach(it=>{
+        const key=castName+'_'+wk+'_'+ds+'_'+it;
+        if(S.checkData[key])delete S.checkData[key];
+      });
+      // checkedDatesからも削除
+      if(sub.checkedDates&&sub.checkedDates[ds])delete sub.checkedDates[ds];
+      // 残りシフトが全チェック済みかチェック
+      const dates=getWeekDates(wk);
+      const shiftDates=dates.filter(d=>{
+        if(d===ds)return false; // 今回休日にした日は除外
+        const sh=S.shifts[castName+'_'+d];
+        return sh&&sh.start!=null;
+      });
+      const allDone=shiftDates.length===0||shiftDates.every(d=>
+        items.every(it=>{
+          const cd=S.checkData[castName+'_'+wk+'_'+d+'_'+it];
+          return cd&&cd.checked;
+        })
+      );
+      // ステータスをchange_confirmedに
+      sub.status='change_confirmed';
+      sub.confirmedBy=currentStaffName||'内勤';
+      sub.confirmedAt=new Date().toLocaleString('ja-JP');
+      addLog('change_confirm',castName,wk,`休日変更確定：${ds}`);
+      saveState(false);
+      renderInputCheck();
+      showToast(`✅ ${castName} ${(()=>{const d=new Date(ds);return (d.getMonth()+1)+'/'+d.getDate();})()}を休日変更確定しました`);
+    }
+  );
+}
+
 function setHolidayShift(ds){
   const name=currentUser.name;
   const wk=getWeekKey(ds);
@@ -2794,7 +2836,7 @@ function renderInputCheckBody(){
       if(isChangedDay&&isHolidayChange&&(dsub.status==='change_submitted'||dsub.status==='change_inputting')){
         // 休日変更提出
         rowClass='ic-row-change-wait';
-        dayBadge='🚫 休日変更';dayBadgeCls='day-badge-change-wait';
+        dayBadge=`<button onclick="icConfirmHoliday('${u.name}','${icWeekKey}','${ds}')" style="padding:3px 7px;font-size:10px;font-weight:700;background:#fce7f3;color:#9d174d;border:1.5px solid #f472b6;border-radius:5px;cursor:pointer;white-space:nowrap;line-height:1.4">🚫 休日変更</button>`;dayBadgeCls='';
       } else if(isChangedDay&&(dsub.status==='change_submitted'||dsub.status==='change_inputting')){
         // 変更許可した日・再提出済み
         rowClass='ic-row-change-wait';
@@ -2856,7 +2898,7 @@ function renderInputCheckBody(){
       // ===== 上段 =====
       html+=`<tr class="${effectiveRowClass}${evenCls}${noShiftCls} ic-row-upper ic-date-top" data-rest="${noShiftCls?'1':'0'}" data-cast="${u.name}">
         <td class="ic-status-cell" rowspan="2" style="vertical-align:middle;min-width:72px;width:72px;font-size:10px;padding:4px 3px!important;word-break:keep-all;line-height:1.4">
-          <span class="day-badge ${dayBadgeCls}" style="font-size:10px;white-space:normal;word-break:keep-all;line-height:1.4;text-align:center;display:block;width:100%">${dayBadge}</span>
+          ${dayBadgeCls?`<span class="day-badge ${dayBadgeCls}" style="font-size:10px;white-space:normal;word-break:keep-all;line-height:1.4;text-align:center;display:block;width:100%">${dayBadge}</span>`:dayBadge}
         </td>
         <td class="ic-change-cell" rowspan="2" style="position:sticky;left:72px;z-index:1;background:inherit;border-right:1px solid var(--border)!important;vertical-align:middle;min-width:44px;width:44px">
           <button style="padding:3px 6px;font-size:11px;font-weight:700;background:${isPending?'#fef08a':isChangedDay?'#fde68a':'#e0e7ff'};color:${isPending?'#78350f':isChangedDay?'#92400e':'#3730a3'};border:1px solid ${isPending?'#fbbf24':isChangedDay?'#fcd34d':'#c7d2fe'};border-radius:5px;cursor:pointer;display:block;margin:0 auto;white-space:nowrap"
@@ -3268,21 +3310,7 @@ function confShiftIC(castName,wk){
   const items2=items; // checkedDates用エイリアス
   const dates=getWeekDates(wk);
 
-  // 休日変更の日チェック（チェックが残っていたら更新ブロック）
-  const holidayDates=(sub.holidayChangeDates||[]).filter(ds=>dates.includes(ds));
-  if(holidayDates.length>0){
-    const unclearedHolidays=holidayDates.filter(ds=>
-      items.some(it=>{
-        const cd=S.checkData[castName+'_'+wk+'_'+ds+'_'+it];
-        return cd&&cd.checked;
-      })
-    );
-    if(unclearedHolidays.length>0){
-      const labels=unclearedHolidays.map(d=>{const dt=new Date(d);return `${dt.getMonth()+1}/${dt.getDate()}`;}).join('・');
-      openInfoModal(`⚠️ ${labels} は休日変更です。チェックを外してから更新してください。`);
-      return;
-    }
-  }
+  // 休日変更はicConfirmHolidayボタンで個別処理するため更新ブロック不要
 
   // シフトが入っている日のみを対象にチェック数を計算
   const shiftDates=dates.filter(ds=>{

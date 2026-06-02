@@ -1920,10 +1920,31 @@ function icConfirmHoliday(castName, wk, ds){
       // holidayChangeDatesに追加（まだなければ）
       if(!sub.holidayChangeDates)sub.holidayChangeDates=[];
       if(!sub.holidayChangeDates.includes(ds))sub.holidayChangeDates.push(ds);
-      // ステータスをchange_confirmedに（残り状況に関わらず）
-      sub.status='change_confirmed';
-      sub.confirmedBy=currentStaffName||'内勤';
-      sub.confirmedAt=new Date().toLocaleString('ja-JP');
+      // confirmedHolidayDatesに追加（確定済み休日を記録）
+      if(!sub.confirmedHolidayDates)sub.confirmedHolidayDates=[];
+      if(!sub.confirmedHolidayDates.includes(ds))sub.confirmedHolidayDates.push(ds);
+      // 未確定の休日変更がまだあるかチェック
+      const _unconfirmed=(sub.holidayChangeDates||[]).filter(d=>!(sub.confirmedHolidayDates||[]).includes(d));
+      // 未確定の休日変更がなく、かつ残りシフトも全チェック済みの場合のみchange_confirmed
+      const _dates=getWeekDates(wk);
+      const _stores=S.castStores[castName]||[];
+      const _items=[...new Set(['記録簿',..._stores])];
+      const _remainDates=_dates.filter(d=>{
+        if((sub.holidayChangeDates||[]).includes(d))return false;
+        const sh=S.shifts[castName+'_'+d];
+        return sh&&sh.start!=null;
+      });
+      const _allChecked=_remainDates.length===0||_remainDates.every(d=>
+        _items.every(it=>{const cd=S.checkData[castName+'_'+wk+'_'+d+'_'+it];return cd&&cd.checked;})
+      );
+      if(_unconfirmed.length===0&&_allChecked){
+        sub.status='change_confirmed';
+        sub.confirmedBy=currentStaffName||'内勤';
+        sub.confirmedAt=new Date().toLocaleString('ja-JP');
+      } else {
+        // まだ未確定の休日変更や未チェックがある→change_inputtingで継続
+        sub.status='change_inputting';
+      }
       addLog('change_confirm',castName,wk,`休日変更確定：${ds}`);
       saveState(false);
       renderInputCheck();
@@ -2805,7 +2826,7 @@ function renderInputCheckBody(){
       const noteVal=S.checkNotes[noteKey]||'';
       const dChangedDates=dsub.changedDates||[];
       const isChangedDay=(_pendingChanges[_pk]&&_pendingChanges[_pk].has(ds))||dChangedDates.includes(ds);
-      const isHolidayChange=(dsub.holidayChangeDates||[]).includes(ds);
+      const isHolidayChange=(dsub.holidayChangeDates||[]).includes(ds)&&!(dsub.confirmedHolidayDates||[]).includes(ds);
       const isPending=_pendingChanges[_pk]&&_pendingChanges[_pk].has(ds);
       const shiftLabel=sh&&sh.start!=null&&!isHolidayChange?fmtR(sh.start,sh.end):'';
 

@@ -2118,6 +2118,15 @@ function doSubmitShifts(){
     Object.entries(S.shifts||{}).forEach(([k,v])=>{
       if(k.startsWith(name+'_')) submitData.shifts[k]=v;
     });
+    // holidayChangeDatesの日はnullを送って削除を明示
+    [...normalWks,...changeWks].forEach(wk=>{
+      const sub=S.submissions[name+'_'+wk];
+      if(!sub)return;
+      (sub.holidayChangeDates||[]).forEach(ds=>{
+        const shiftKey=name+'_'+ds;
+        if(!submitData.shifts[shiftKey]) submitData.shifts[shiftKey]=null;
+      });
+    });
     const body=new FormData();
     body.append('action','castSave');
     body.append('token','sakura2025shift');

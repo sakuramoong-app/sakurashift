@@ -3322,7 +3322,7 @@ function confShiftIC(castName,wk){
   const dates=getWeekDates(wk);
 
   // 休日変更の日が残っている場合はchange_inputtingに遷移してポップアップ
-  const _unconfirmedHolidays=(sub.holidayChangeDates||[]).filter(ds=>dates.includes(ds));
+  const _unconfirmedHolidays=(sub.holidayChangeDates||[]).filter(ds=>dates.includes(ds)&&!(sub.confirmedHolidayDates||[]).includes(ds));
   if(_unconfirmedHolidays.length>0){
     const _labels=_unconfirmedHolidays.map(d=>{const dt=new Date(d);return `${dt.getMonth()+1}/${dt.getDate()}`;}).join('・');
     sub.status='change_inputting';

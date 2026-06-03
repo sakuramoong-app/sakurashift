@@ -3314,6 +3314,9 @@ function confShiftIC(castName,wk){
     const existing=sub.changedDates||[];
     sub.changedDates=[...new Set([...existing,...dates])];
     sub.status='change_unlocked';
+    // 再変更許可時は休日変更フラグをリセット（前回の確定状態を引き継がない）
+    sub.holidayChangeDates=[];
+    sub.confirmedHolidayDates=[];
     delete _pendingChanges[pk];
     addLog('change_unlock',castName,wk,dates.join(','));
     showSyncOverlay('変更許可中...');

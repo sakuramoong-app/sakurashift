@@ -1310,6 +1310,26 @@ function tzMinKey(tz){
   if(tz.type==='exact_end')return 'ee_'+tz.end;
   return tz.start;
 }
+// 指定日の営業終了時間を取得
+function getBizClose(ds){
+  if(!ds)return 29;
+  const bh=S.businessHours||{};
+  if(bh.closed&&bh.closed.includes(ds))return 0;
+  if(bh.special&&bh.special[ds])return bh.special[ds].close||29;
+  const dow=new Date(ds+'T12:00:00').getDay();
+  if(bh.weekly&&bh.weekly[dow]!=null)return bh.weekly[dow].close||29;
+  return (bh.default&&bh.default.close)||29;
+}
+// 時間帯が営業時間内かチェック
+function isZoneInBizHours(ds,tz){
+  const close=getBizClose(ds);
+  // exact_end: 退勤時刻が営業終了を超える場合はスキップ
+  if(tz.type==='exact_end')return tz.end<=close;
+  // exact_start: 出勤時刻が営業終了を超える場合はスキップ
+  if(tz.type==='exact_start')return tz.start<close;
+  // 通常時間帯: 開始が営業終了以上ならスキップ
+  return tz.start<close;
+}
 function countZone(ds,zi){
   const tz=TIME_ZONES[zi];let c=0;
   S.castList.forEach(u=>{
@@ -1325,7 +1345,16 @@ function countZone(ds,zi){
   });
   return c;
 }
-function getAlerts(ds){const a=[];for(let i=0;i<4;i++){const cnt=countZone(ds,i),min=S.minPeople[tzMinKey(TIME_ZONES[i])]||0;if(cnt<min)a.push({label:TIME_ZONES[i].label,need:min-cnt});}return a;}
+function getAlerts(ds){
+  const a=[];
+  for(let i=0;i<4;i++){
+    const tz=TIME_ZONES[i];
+    if(!isZoneInBizHours(ds,tz))continue; // 営業時間外の時間帯はスキップ
+    const cnt=countZone(ds,i),min=S.minPeople[tzMinKey(tz)]||0;
+    if(cnt<min)a.push({label:tz.label,need:min-cnt});
+  }
+  return a;
+}
 function escHtml(s){return(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
 
 // ===== CAST PAGES =====
@@ -3641,7 +3670,7 @@ function renderHourly(){
         ${d.getMonth()+1}/${d.getDate()}(${DOWNAMES[dow]}${isHol?'祝':''}) 🔍
       </td>`;
       TIME_ZONES.forEach((tz,i)=>{
-        const cnt=countZone(ds,i),min=S.minPeople[tzMinKey(tz)]||0,isDanger=cnt<min;
+        const cnt=countZone(ds,i),min=S.minPeople[tzMinKey(tz)]||0,isDanger=isZoneInBizHours(ds,tz)&&cnt<min;
         html+=`<td style="padding:6px 9px;border-bottom:1px solid var(--border);text-align:center;background:${isDanger?'#fee2e2':'#f0fdf4'};font-weight:700;color:${isDanger?'#991b1b':'#065f46'}">
           ${cnt}<span style="font-size:9px;font-weight:400;color:${isDanger?'#991b1b':'#94a3b8'}">/${min}</span>${isDanger?'⚠️':''}
         </td>`;

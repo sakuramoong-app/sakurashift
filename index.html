@@ -3618,6 +3618,64 @@ function renderHourly(){
   }
   const todayStr=localDateStr(today);
   let html=dashHtml;
+
+  // 長期休暇カレンダー（来週未提出の下）
+  if(S.castAbsence&&Object.keys(S.castAbsence).length>0){
+    // 最大終了日を取得して今月〜その月まで表示
+    const _now=new Date();
+    let _maxDate=new Date(_now.getFullYear(),_now.getMonth()+1,0); // デフォルト今月末
+    Object.values(S.castAbsence).forEach(absences=>{
+      absences.forEach(a=>{
+        if(a.to){const _d=new Date(a.to);if(_d>_maxDate)_maxDate=_d;}
+      });
+    });
+    // 今月〜最大月までのリストを生成
+    const _months=[];
+    let _cy=_now.getFullYear(),_cm=_now.getMonth();
+    const _ey=_maxDate.getFullYear(),_em=_maxDate.getMonth();
+    while(_cy<_ey||(_cy===_ey&&_cm<=_em)){
+      _months.push({y:_cy,m:_cm});
+      _cm++;if(_cm>11){_cm=0;_cy++;}
+      if(_months.length>24)break; // 最大24ヶ月で安全停止
+    }
+    let absCalHtml=`<div class="card" style="margin-bottom:12px">
+      <div class="accordion-header" onclick="toggleAccordion('accAbsCal')" style="padding:4px 0">
+        <div class="card-title" style="margin:0"><span class="ct-icon" style="background:#dbeafe;color:#1e40af">📅</span>事前申告休暇カレンダー</div>
+        <span class="accordion-arrow" id="arrowAccAbsCal">▼</span>
+      </div>
+      <div class="accordion-body" id="accAbsCal"><div style="padding-top:8px">`;
+
+    _months.forEach(({y,m})=>{
+      const _daysInMonth=new Date(y,m+1,0).getDate();
+      absCalHtml+=`<div style="margin-bottom:12px">
+        <div style="font-weight:700;font-size:13px;color:var(--navy);margin-bottom:6px;padding:4px 8px;background:#f0f4ff;border-radius:6px">${y}年${m+1}月</div>
+        <div style="display:flex;flex-direction:column;gap:2px">`;
+      for(let day=1;day<=_daysInMonth;day++){
+        const ds=`${y}-${String(m+1).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
+        const _absCasts=[];
+        Object.entries(S.castAbsence).forEach(([castName,absences])=>{
+          absences.forEach(a=>{
+            if(a.from<=ds&&ds<=a.to)_absCasts.push({name:castName,reason:a.reason||''});
+          });
+        });
+        if(!_absCasts.length)continue;
+        const _d=new Date(y,m,day);
+        const _dow=_d.getDay();
+        const _dowNames=['日','月','火','水','木','金','土'];
+        const _dayColor=_dow===0?'color:#dc2626':_dow===6?'color:#2563eb':'color:#334155';
+        absCalHtml+=`<div style="display:flex;align-items:flex-start;gap:8px;padding:5px 8px;background:#f0f9ff;border-radius:6px;border-left:3px solid #3b82f6">
+          <span style="font-size:12px;font-weight:700;${_dayColor};white-space:nowrap;min-width:60px">${m+1}/${day}(${_dowNames[_dow]})</span>
+          <div style="flex:1;display:flex;flex-wrap:wrap;gap:4px">
+            ${_absCasts.map(c=>`<span style="font-size:11px;background:#dbeafe;color:#1e40af;border-radius:10px;padding:2px 8px;font-weight:600">${c.name}${c.reason?`：${escHtml(c.reason)}`:''}
+            </span>`).join('')}
+          </div>
+        </div>`;
+      }
+      absCalHtml+=`</div></div>`;
+    });
+    absCalHtml+=`</div></div></div>`;
+    html+=absCalHtml;
+  }
   const currWk=getCurrWk();
   const nextWk=getNextWk();
   const nextNextWk=getNextNextWk();

@@ -639,12 +639,33 @@ async function loadFromGAS(){
         setTimeout(()=>saveState(),500);
       } else {
         // 通常: GASデータを使用（内勤の変更が反映される）
-        S=migratedGas;
-        S.operationLog=localData&&localData.operationLog||[];
-        if(!S.checkData)S.checkData={};
-        // staffListがGASから消えた場合はlocalから復元
-        if(!S.staffList&&localData&&localData.staffList)S.staffList=localData.staffList;
-        if(!S.staffList)S.staffList=[];
+        if(_role==='cast'&&localData){
+          // キャスト用：GASは自分のデータのみ返すため、submissionsはマージ
+          S=migratedGas;
+          S.operationLog=localData.operationLog||[];
+          if(!S.checkData)S.checkData={};
+          // localのsubmissionsのうち自分以外の週のデータは不要だが
+          // 自分のsubmissionsはGASデータで上書き（内勤が確定した最新状態を反映）
+          // ただしlocalにあって自分のキャスト名のsubがGASに存在しない場合はlocalを保護
+          const _castName=currentUser&&currentUser.name;
+          if(_castName&&localData.submissions){
+            Object.entries(localData.submissions).forEach(([k,v])=>{
+              if(!k.startsWith(_castName+'_'))return; // 自分以外は無視
+              if(!S.submissions[k]){
+                // GASにないがlocalにある→localを優先（提出済みデータ保護）
+                S.submissions[k]=v;
+              }
+            });
+          }
+          if(!S.staffList&&localData.staffList)S.staffList=localData.staffList;
+          if(!S.staffList)S.staffList=[];
+        } else {
+          S=migratedGas;
+          S.operationLog=localData&&localData.operationLog||[];
+          if(!S.checkData)S.checkData={};
+          if(!S.staffList&&localData&&localData.staffList)S.staffList=localData.staffList;
+          if(!S.staffList)S.staffList=[];
+        }
         console.log('[loadFromGAS] GAS使用 shifts:'+gasShifts);
       }
     } else {

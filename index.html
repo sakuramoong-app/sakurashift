@@ -745,33 +745,52 @@ function saveState(showOverlay=true){
   _isSaving=true;
   if(showOverlay) showSyncOverlay('保存中...');
 
-  // GASに送るデータを構築（画像・ログを除外）
-  const gasData={...S};
-  delete gasData.noticeImage;
-  delete gasData.personalNoticeImages;
-  delete gasData.operationLog; // ログは除外
+  // 保存前にGASの最新submissionsをマージ（他の内勤が更新したデータを保護）
+  _saveQueue=fetch(GAS_URL+'?action=load&token=sakura2025shift&role=staff')
+    .then(r=>r.json())
+    .then(gasResp=>{
+      if(gasResp&&gasResp.data){
+        try{
+          const gasData2=JSON.parse(gasResp.data);
+          const gasSubs=gasData2.submissions||{};
+          // GASにあってlocalにないsubmissionsを補完
+          Object.entries(gasSubs).forEach(([k,v])=>{
+            if(!S.submissions[k]) S.submissions[k]=v;
+          });
+          // localStorageも更新
+          S._savedAt=Date.now();
+          try{localStorage.setItem('shiftSysV8',JSON.stringify(S));}catch(e){}
+        }catch(e){console.warn('merge error:',e);}
+      }
 
-  // checkData を圧縮: checked:false のエントリを除外（デフォルト値のため不要）
-  const compressedCheck={};
-  Object.entries(gasData.checkData||{}).forEach(([k,v])=>{
-    if(v&&v.checked===true)compressedCheck[k]=v;
-  });
-  gasData.checkData=compressedCheck;
+      // GASに送るデータを構築（画像・ログを除外）
+      const gasData={...S};
+      delete gasData.noticeImage;
+      delete gasData.personalNoticeImages;
+      delete gasData.operationLog; // ログは除外
 
-  const dataStr=JSON.stringify(gasData);
-  console.log('[saveState] size:', Math.round(dataStr.length/1024)+'KB');
+      // checkData を圧縮: checked:false のエントリを除外（デフォルト値のため不要）
+      const compressedCheck={};
+      Object.entries(gasData.checkData||{}).forEach(([k,v])=>{
+        if(v&&v.checked===true)compressedCheck[k]=v;
+      });
+      gasData.checkData=compressedCheck;
 
-  const body=new FormData();
-  body.append('action','save');
-  body.append('token','sakura2025shift');
-  body.append('data',dataStr);
-  _saveQueue=fetch(GAS_URL,{method:'POST',body})
+      const dataStr=JSON.stringify(gasData);
+      console.log('[saveState] size:', Math.round(dataStr.length/1024)+'KB');
+
+      const body=new FormData();
+      body.append('action','save');
+      body.append('token','sakura2025shift');
+      body.append('data',dataStr);
+      return fetch(GAS_URL,{method:'POST',body});
+    })
     .then(r=>r.json())
     .then(result=>{
       _isSaving=false;
       if(showOverlay) hideSyncOverlay();
       if(result&&result.error){
-        console.warn('GAS save error:',result.error); // 内部エラーはコンソールのみ
+        console.warn('GAS save error:',result.error);
         showToast('⚠️ 保存に失敗しました。時間をおいて再試行してください。');
         return false;
       }
@@ -1195,6 +1214,7 @@ async function doLogin(){
     currentUser=u; currentType='cast';
     document.getElementById('loginScreen').style.display='none';
     document.getElementById('app').style.display='flex';
+    resetAutoLogoutTimer(); // 自動ログアウトタイマー開始
     document.getElementById('topbarUser').textContent=u.name;
     document.getElementById('topbarBadge').textContent='キャスト';
     document.getElementById('castTabs').classList.remove('hidden');
@@ -1234,6 +1254,7 @@ async function doLogin(){
     currentUser={name:'内勤'};currentType='staff';
     document.getElementById('loginScreen').style.display='none';
     document.getElementById('app').style.display='flex';
+    resetAutoLogoutTimer(); // 自動ログアウトタイマー開始
     document.getElementById('topbarBadge').textContent='内勤スタッフ';
     document.getElementById('topbarUser').textContent='';
     document.getElementById('staffTabs').classList.remove('hidden');
@@ -1276,7 +1297,69 @@ function reloadCurrentPage(){
   });
 }
 
+// ===== 無操作自動ログアウト（30分） =====
+const AUTO_LOGOUT_MS = 30 * 60 * 1000; // 30分
+const AUTO_LOGOUT_WARN_MS = 10; // 10秒前に警告
+let _autoLogoutTimer = null;
+let _autoLogoutWarnTimer = null;
+let _autoLogoutCountdown = null;
+
+function resetAutoLogoutTimer() {
+  // ログインしていない場合はタイマー不要
+  if (!currentUser && !currentStaffName) return;
+  clearTimeout(_autoLogoutTimer);
+  clearTimeout(_autoLogoutWarnTimer);
+  clearInterval(_autoLogoutCountdown);
+  // 警告モーダルが出ていたら閉じる
+  const _warn = document.getElementById('autoLogoutWarn');
+  if (_warn) _warn.remove();
+
+  _autoLogoutTimer = setTimeout(() => {
+    showAutoLogoutWarning();
+  }, AUTO_LOGOUT_MS);
+}
+
+function showAutoLogoutWarning() {
+  // 既にログアウト済みなら何もしない
+  if (!currentUser && !currentStaffName) return;
+  let _sec = 10;
+  const _div = document.createElement('div');
+  _div.id = 'autoLogoutWarn';
+  _div.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.6);z-index:9999;display:flex;align-items:center;justify-content:center;';
+  _div.innerHTML = `<div style="background:var(--card);border-radius:12px;padding:24px;max-width:320px;width:90%;text-align:center;box-shadow:0 8px 32px rgba(0,0,0,.2)">
+    <div style="font-size:32px;margin-bottom:8px">⏰</div>
+    <div style="font-weight:700;font-size:16px;margin-bottom:8px;color:var(--text)">30分間操作がありませんでした</div>
+    <div style="font-size:13px;color:var(--text2);margin-bottom:16px"><span id="autoLogoutSec">${_sec}</span>秒後に自動ログアウトします</div>
+    <button onclick="(()=>{clearInterval(window._autoLogoutCountdown);document.getElementById('autoLogoutWarn').remove();resetAutoLogoutTimer();})()" 
+      style="width:100%;padding:10px;background:var(--pink);color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer">
+      続けて使う
+    </button>
+  </div>`;
+  document.body.appendChild(_div);
+
+  _autoLogoutCountdown = setInterval(() => {
+    _sec--;
+    const _secEl = document.getElementById('autoLogoutSec');
+    if (_secEl) _secEl.textContent = _sec;
+    if (_sec <= 0) {
+      clearInterval(_autoLogoutCountdown);
+      const _w = document.getElementById('autoLogoutWarn');
+      if (_w) _w.remove();
+      doLogout();
+    }
+  }, 1000);
+}
+
+// マウス・タッチ・キー操作でタイマーリセット
+['mousemove','mousedown','click','touchstart','touchmove','keydown','scroll'].forEach(ev => {
+  document.addEventListener(ev, resetAutoLogoutTimer, { passive: true });
+});
+
 function doLogout(){
+  clearTimeout(_autoLogoutTimer);
+  clearTimeout(_autoLogoutWarnTimer);
+  clearInterval(_autoLogoutCountdown);
+  const _w=document.getElementById('autoLogoutWarn');if(_w)_w.remove();
   currentUser=null;currentType=null;currentStaffName='';
   document.getElementById('loginScreen').style.display='flex';
   document.getElementById('app').style.display='none';

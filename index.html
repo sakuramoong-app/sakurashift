@@ -3812,7 +3812,13 @@ function renderHourly(){
     // 週単位表示（月〜日の日別テーブル）
     const wk=hourlyWeekKey;
     const dates=getWeekDates(wk);
-    html+=`<div class="card"><div class="card-title"><span class="ct-icon ct-teal">⏰</span>時間帯別在籍人数 週表示（${getWeekLabel(wk)}）</div>`;
+    html+=`<div class="card">
+      <div class="card-title" style="justify-content:space-between">
+        <span style="display:flex;align-items:center;gap:7px"><span class="ct-icon ct-teal">⏰</span>時間帯別在籍人数 週表示（${getWeekLabel(wk)}）</span>
+        <button id="hmSaveBtn_${wk}" class="btn btn-primary btn-sm" onclick="saveHourlyMemo('${wk}')" style="flex-shrink:0">
+          💾 この週の備考を保存
+        </button>
+      </div>`;
     // 日付×時間帯の表
     html+=`<div style="overflow-x:auto"><table style="border-collapse:collapse;font-size:11px;min-width:max-content;width:100%">
       <thead><tr>
@@ -3822,7 +3828,6 @@ function renderHourly(){
       </tr></thead><tbody>`;
 
     if(!S.hourlyMemo)S.hourlyMemo={};
-    let _memoTimer={};
 
     dates.forEach((ds,dsIdx)=>{
       const _dp=ds.split('-');const d=new Date(+_dp[0],+_dp[1]-1,+_dp[2],12,0,0),dow=(d.getDay()+6)%7;
@@ -3847,18 +3852,62 @@ function renderHourly(){
         </td>`;
       });
       html+=`<td style="padding:6px 9px;border-bottom:0;font-size:10px;color:var(--text2)">${namesStr}</td></tr>`;
-      // 備考欄（日付ごと横長）
+      // 備考欄（日付ごと横長）—— 入力時はlocalStorageのみ即時更新、GAS保存はボタンで実行
       const colspan=TIME_ZONES.length+2;
       html+=`<tr><td colspan="${colspan}" style="padding:2px 6px 8px 6px;border-bottom:1px solid var(--border)">
-        <input type="text" value="${memoVal}" placeholder="備考：この日の打診メモなど..."
+        <input type="text" id="hmInput_${ds}" value="${memoVal}" placeholder="備考：この日の打診メモなど..."
           style="width:100%;padding:5px 8px;font-size:12px;border:1px solid var(--border);border-radius:5px;box-sizing:border-box;background:#fafafa;color:var(--text)"
-          oninput="(function(el,ds){if(window._hmTimer&&window._hmTimer[ds])clearTimeout(window._hmTimer[ds]);if(!window._hmTimer)window._hmTimer={};window._hmTimer[ds]=setTimeout(function(){if(!S.hourlyMemo)S.hourlyMemo={};S.hourlyMemo[ds]=el.value;saveState(false);},1200);})(this,'${ds}')">
+          oninput="(function(el,ds,wk){
+            if(!S.hourlyMemo)S.hourlyMemo={};
+            S.hourlyMemo[ds]=el.value;
+            try{localStorage.setItem('shiftSysV8',JSON.stringify(S));}catch(e){}
+            const btn=document.getElementById('hmSaveBtn_'+wk);
+            if(btn){btn.style.background='linear-gradient(135deg,#f59e0b,#d97706)';btn.textContent='💾 保存（未保存あり）';}
+          })(this,'${ds}','${wk}')">
       </td></tr>`;
     });
-    html+=`</tbody></table></div></div>`;
+    // テーブル下部にも保存ボタン（スクロールしても押しやすい位置）
+    html+=`</tbody></table></div>
+      <div style="display:flex;justify-content:flex-end;margin-top:10px;padding-top:10px;border-top:1px solid var(--border)">
+        <button class="btn btn-primary" onclick="saveHourlyMemo('${wk}')" style="gap:6px">
+          💾 この週の備考を保存
+        </button>
+      </div>
+    </div>`;
   }
 
   document.getElementById('mainContent').innerHTML=html;
+}
+
+// 時間帯人数タブ：週ごとの備考をGASに保存
+function saveHourlyMemo(wk){
+  if(!S.hourlyMemo)S.hourlyMemo={};
+  // 画面上の入力値を最終同期（念のため）
+  const dates=getWeekDates(wk);
+  dates.forEach(ds=>{
+    const el=document.getElementById('hmInput_'+ds);
+    if(el)S.hourlyMemo[ds]=el.value;
+  });
+  // ボタンを「保存中」状態に
+  const btns=[document.getElementById('hmSaveBtn_'+wk)];
+  btns.forEach(b=>{if(b){b.disabled=true;b.textContent='⏳ 保存中...';}});
+  saveState(true).then(ok=>{
+    btns.forEach(b=>{
+      if(!b)return;
+      b.disabled=false;
+      if(ok===false){
+        b.style.background='linear-gradient(135deg,#f87171,#dc2626)';
+        b.textContent='❌ 保存失敗 — 再試行';
+      } else {
+        b.style.background='linear-gradient(135deg,#34d399,#059669)';
+        b.textContent='✅ 保存完了';
+        setTimeout(()=>{
+          b.style.background='';
+          b.textContent='💾 この週の備考を保存';
+        },2500);
+      }
+    });
+  });
 }
 
 // ===== SETTINGS =====

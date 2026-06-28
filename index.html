@@ -1543,9 +1543,19 @@ function renderCal(){
   const startDow=(first.getDay()+6)%7;
   for(let i=0;i<startDow;i++){const d=new Date(calY,calM,1-startDow+i,12,0,0);html+=`<div class="cal-cell other-month"><div class="cal-date">${d.getDate()}</div></div>`;}
 
+  // 月初が月曜でない場合、月初〜その週の日曜までは前月の週キーに属する
+  // → キャストには「前月カレンダーで入力する週」なのでタップ不可(other-month)扱いにする
+  const _firstMonWk=getWeekKey(first); // 月1日が属する週の月曜
+  const _thisMonWk=localDateStr(new Date(calY,calM,1+ (7-(first.getDay()+6)%7)%7 ,12,0,0)); // この月最初の「月曜始まり」週
+
   for(let day=1;day<=last.getDate();day++){
     const date=new Date(calY,calM,day,12,0,0);
     const ds=localDateStr(date);
+    // 月初の日付が前月の週キーに属する場合はother-month（入力不可）として描画
+    if(_firstMonWk!==localDateStr(new Date(calY,calM,1,12,0,0))&&ds<_thisMonWk){
+      html+=`<div class="cal-cell other-month" style="position:relative"><div class="cal-date" style="color:#94a3b8">${day}</div><div style="font-size:8px;color:#cbd5e1;font-weight:600;line-height:1.3">前月の<br>週で提出</div></div>`;
+      continue;
+    }
     const conf=isConfirmed(name,ds),sh=S.shifts[name+'_'+ds],alts=getAlerts(ds);
     const bizDay=getBizHours(ds);
     const isClosed=bizDay===null;
@@ -1623,6 +1633,8 @@ function applyBulk(){
   let cnt=0;
   for(let d=1;d<=new Date(calY,calM+1,0).getDate();d++){
     const date=new Date(calY,calM,d,12,0,0),dow=(date.getDay()+6)%7,ds=localDateStr(date);
+    // 月初が月またぎ週に属する日はスキップ（前月カレンダーで入力する週）
+    if(ds<_thisMonWk&&_firstMonWk!==localDateStr(new Date(calY,calM,1,12,0,0)))continue;
     if(!dows.includes(dow)||isConfirmed(name,ds))continue;
     const biz=getBizHours(ds);
     if(!biz)continue; // 休業日スキップ
